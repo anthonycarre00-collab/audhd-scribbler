@@ -29,6 +29,7 @@ from . import tagger
 from . import db
 from . import export
 from . import llm
+from . import search as search_module
 from .file_io import read_text_file
 from .analyzers import craft, voice_tense, characters, continuity, themes, editor, market as market_analyzer
 from .dashboard import generate as generate_dashboard
@@ -626,6 +627,159 @@ def links(file_path: str):
         if link.get("shared_themes"):
             click.echo(f"    Shared themes: {', '.join(link['shared_themes'])}")
         click.echo()
+
+
+@cli.command()
+@click.option("--character", "-c", help="Search by character name")
+@click.option("--place", "-p", help="Search by place name")
+@click.option("--theme", "-t", help="Search by theme")
+@click.option("--era", "-e", help="Search by era (childhood, adolescence, etc.)")
+@click.option("--mood", "-m", help="Search by emotional register")
+@click.option("--status", "-s", help="Search by status (seedling, growing, etc.)")
+def search(character, place, theme, era, mood, status):
+    """Search files by tags. Find all sections mentioning a character, set in a place, etc.
+
+    Examples:
+      scribbler search --character "Nathan"
+      scribbler search --place "Colombia"
+      scribbler search --theme "masking"
+      scribbler search --character "Nathan" --place "Colombia"
+    """
+    # Build filters
+    filters = {}
+    if character:
+        filters["characters"] = character
+    if place:
+        filters["places"] = place
+    if theme:
+        filters["themes"] = theme
+    if era:
+        filters["era"] = era
+    if mood:
+        filters["emotional_register"] = mood
+    if status:
+        filters["status"] = status
+
+    if not filters:
+        click.echo("\n  Search by tags — pick at least one filter:")
+        click.echo("    --character NAME    e.g., --character \"Nathan\"")
+        click.echo("    --place NAME        e.g., --place \"Colombia\"")
+        click.echo("    --theme NAME        e.g., --theme \"masking\"")
+        click.echo("    --era NAME          e.g., --era \"childhood\"")
+        click.echo("    --mood NAME         e.g., --mood \"numb\"")
+        click.echo("    --status NAME       e.g., --status \"resting\"")
+        click.echo()
+        click.echo("  Combine multiple filters (AND logic):")
+        click.echo("    scribbler search --character \"Nathan\" --place \"Colombia\"")
+        click.echo()
+        return
+
+    click.echo(f"\n  Searching for files matching: {filters}")
+    click.echo()
+
+    if len(filters) == 1:
+        # Single tag search
+        tag_type, value = next(iter(filters.items()))
+        results = search_module.search_by_tag(tag_type, value)
+    else:
+        # Multi-tag search
+        results = search_module.search_multi(filters)
+
+    if not results:
+        click.echo(f"  No files found matching your search.")
+        click.echo()
+        return
+
+    click.echo(f"  Found {len(results)} file(s):\n")
+
+    for i, f in enumerate(results, 1):
+        name = f.get("filename", "unknown")
+        word_count = f.get("word_count", 0)
+        file_status = f.get("status", "")
+        file_era = f.get("era", "")
+        file_chars = f.get("characters") or []
+        file_themes = f.get("themes") or []
+
+        click.echo(f"  {i}. {name}")
+        click.echo(f"     {word_count:,} words · status: {file_status} · era: {file_era or '—'}")
+        if file_chars:
+            click.echo(f"     Characters: {', '.join(file_chars[:6])}")
+        if file_themes:
+            click.echo(f"     Themes: {', '.join(file_themes[:5])}")
+
+        # Show where the searched tag appears in this file
+        for tag_type, value in filters.items():
+            if tag_type in ["characters", "places", "themes"]:
+                occurrences = search_module.find_tag_in_file(f.get("path", ""), tag_type, value)
+                if occurrences:
+                    click.echo(f"     '{value}' appears in {len(occurrences)} paragraph(s):")
+                    for occ in occurrences[:3]:  # Show first 3
+                        click.echo(f"       ¶{occ['paragraph']}: {occ['context']}")
+                    if len(occurrences) > 3:
+                        click.echo(f"       ... and {len(occurrences) - 3} more")
+        click.echo()
+
+
+@cli.command()
+@click.argument("file_path")
+def coverage(file_path: str):
+    """Show tag coverage for a file — proves the whole document was analyzed."""
+    path = Path(file_path)
+    if not path.is_absolute():
+        path = PROJECT_ROOT / file_path
+
+    if not path.exists():
+        click.echo(f"  File not found: {path}", err=True)
+        sys.exit(1)
+
+    coverage_info = search_module.get_tag_coverage(str(path.resolve()))
+
+    if not coverage_info:
+        click.echo(f"  No coverage data for {path.name}. Tag it first.")
+        return
+
+    click.echo(f"\n  TAG COVERAGE REPORT: {path.name}")
+    click.echo(f"  {'='*50}\n")
+
+    total_paras = coverage_info.get("total_paragraphs", 0)
+    tagged_paras = coverage_info.get("paragraphs_with_tags", 0)
+    coverage_pct = coverage_info.get("tag_coverage_pct", 0)
+    chunks = coverage_info.get("chunks_analyzed", 1)
+    spread = coverage_info.get("spread_description", "unknown")
+
+    click.echo(f"  Document size: {total_paras} paragraphs")
+    click.echo(f"  Chunks analyzed: {chunks} (the AI processed the whole document)")
+    click.echo(f"  Paragraphs containing tags: {tagged_paras}/{total_paras} ({coverage_pct}%)")
+    click.echo(f"  Coverage spread: {spread}")
+    click.echo()
+
+    tag_dist = coverage_info.get("tag_distribution", {})
+    if tag_dist:
+        click.echo(f"  WHERE TAGS APPEAR IN THE DOCUMENT:")
+        click.echo()
+        for tag_type, values in tag_dist.items():
+            click.echo(f"  {tag_type.upper()}:")
+            for value, para_nums in values.items():
+                # Show which paragraphs contain this tag
+                if len(para_nums) <= 10:
+                    paras_str = ", ".join(str(p) for p in para_nums)
+                else:
+                    paras_str = ", ".join(str(p) for p in para_nums[:5]) + f" ... +{len(para_nums)-5} more"
+                click.echo(f"    '{value}' → paragraph(s): {paras_str}")
+            click.echo()
+    else:
+        click.echo("  No tags found in body text (tags may be from AI analysis only)")
+        click.echo()
+
+    # Verify full coverage
+    spread_num = coverage_info.get("coverage_spread", 0)
+    if spread_num == 3:
+        click.echo("  ✓ FULL COVERAGE CONFIRMED — tags found in beginning, middle, AND end")
+    elif spread_num == 2:
+        click.echo("  ⚠ Partial coverage — tags found in 2 of 3 sections")
+    elif spread_num == 1:
+        click.echo("  ⚠ Limited coverage — tags found in only 1 section of the document")
+    click.echo()
 
 
 def main():

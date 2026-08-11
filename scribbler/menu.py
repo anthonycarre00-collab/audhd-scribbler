@@ -48,24 +48,29 @@ def print_menu():
     print("    4.  What should I do next?  (3 suggested actions)")
     print("    5.  Open the raw-dumps folder  (drop new files here)")
     print()
+    print("  ── SEARCH ───────────────────────────────────")
+    print("    6.  Search by tags  (find sections by character, place, theme)")
+    print("    7.  Tag coverage report  (prove full document was tagged)")
+    print()
     print("  ── ANALYSIS ─────────────────────────────────")
-    print("    6.  Analyze a chapter  (run the full analysis suite)")
-    print("    7.  Analyze ALL chapters  (batch analysis)")
-    print("    8.  Market research  (find comparable titles)")
-    print("    9.  Find links between files  (what connects to what)")
+    print("    8.  Analyze a chapter  (run the full analysis suite)")
+    print("    9.  Analyze ALL chapters  (batch analysis)")
+    print("    10. Market research  (find comparable titles)")
+    print("    11. Find links between files  (what connects to what)")
     print()
     print("  ── VIEW ─────────────────────────────────────")
-    print("    10. Open the dashboard  (visual overview)")
-    print("    11. Show project stats  (word count, file count)")
+    print("    12. Open the dashboard  (visual overview)")
+    print("    13. Show project stats  (word count, file count)")
     print()
     print("  ── EXPORT & MANAGE ──────────────────────────")
-    print("    12. Export a file  (to Word, markdown, or plain text)")
-    print("    13. Export all tagged files  (batch export)")
-    print("    14. Delete a file  (remove from project)")
+    print("    14. Export a file  (to Word, markdown, or plain text)")
+    print("    15. Export all tagged files  (batch export)")
+    print("    16. Delete a file  (remove from project)")
     print()
-    print("  ── SETTINGS ─────────────────────────────────")
-    print("    15. Settings  (Z.ai API key, theme, etc.)")
-    print("    16. Quit")
+    print("  ── HELP & SETTINGS ──────────────────────────")
+    print("    17. How does tagging work?  (understand the system)")
+    print("    18. Settings  (Z.ai API key, theme, etc.)")
+    print("    19. Quit")
     print()
 
 
@@ -73,7 +78,7 @@ def get_choice(prompt="  Pick a number: "):
     try:
         return input(prompt).strip()
     except (EOFError, KeyboardInterrupt):
-        return "16"
+        return "19"
 
 
 def pause():
@@ -555,6 +560,293 @@ def action_open_folder():
     pause()
 
 
+def action_search():
+    """Search files by tags — the core feature for finding sections."""
+    from scribbler import search as search_module
+
+    while True:
+        print_header()
+        print("  SEARCH BY TAGS")
+        print("  " + "-" * 52)
+        print()
+        print("  This is how you find sections. Examples:")
+        print("    • 'Show me everything mentioning Nathan'")
+        print("    • 'Show me everything set in Colombia'")
+        print("    • 'Show me everything about masking'")
+        print("    • 'Show me everything from childhood'")
+        print()
+        print("  Pick a search type:")
+        print()
+        print("    1. By character  (e.g., Nathan, Mom, Dr. Vance)")
+        print("    2. By place  (e.g., Colombia, kitchen, clinic)")
+        print("    3. By theme  (e.g., masking, burnout, diagnosis)")
+        print("    4. By era  (e.g., childhood, twenties, now)")
+        print("    5. By emotional register  (e.g., numb, tender, defensive)")
+        print("    6. By status  (e.g., seedling, resting, polishing)")
+        print("    7. Multi-tag search  (combine filters)")
+        print("    8. Back to menu")
+        print()
+
+        choice = get_choice("  Pick a number: ")
+
+        tag_type_map = {
+            "1": ("characters", "character"),
+            "2": ("places", "place"),
+            "3": ("themes", "theme"),
+            "4": ("era", "era"),
+            "5": ("emotional_register", "emotional register"),
+            "6": ("status", "status"),
+        }
+
+        if choice in tag_type_map:
+            tag_type, label = tag_type_map[choice]
+            _search_single_tag(search_module, tag_type, label)
+        elif choice == "7":
+            _search_multi_tag(search_module)
+        elif choice == "8":
+            break
+
+
+def _search_single_tag(search_module, tag_type: str, label: str):
+    """Search by a single tag type."""
+    print_header()
+    print(f"  SEARCH BY {label.upper()}")
+    print("  " + "-" * 52)
+    print()
+
+    # Get all available values for this tag type
+    values = search_module.get_all_values_for_tag(tag_type)
+
+    if not values:
+        print(f"  No {label}s found in any tagged files.")
+        print("  Tag some files first (menu option 1).")
+        pause()
+        return
+
+    print(f"  Available {label}s (by frequency):")
+    print()
+    for i, v in enumerate(values[:30], 1):
+        print(f"    {i:2d}. {v['value']}  ({v['count']} file(s))")
+    if len(values) > 30:
+        print(f"    ... and {len(values) - 30} more")
+    print()
+    print("  Type the name of the " + label + " to search for,")
+    print("  or type the number from the list above,")
+    print("  or type your own search term.")
+    print()
+
+    user_input = input(f"  Search for {label}: ").strip()
+
+    if not user_input:
+        return
+
+    # Check if they typed a number
+    try:
+        num = int(user_input)
+        if 1 <= num <= len(values):
+            search_value = values[num - 1]["value"]
+        else:
+            search_value = user_input
+    except ValueError:
+        search_value = user_input
+
+    # Run the search
+    print()
+    print(f"  Searching for files with {label} '{search_value}'...")
+    print()
+
+    results = search_module.search_by_tag(tag_type, search_value)
+
+    if not results:
+        print(f"  No files found with {label} matching '{search_value}'.")
+        pause()
+        return
+
+    print(f"  Found {len(results)} file(s):\n")
+
+    for i, f in enumerate(results, 1):
+        name = f.get("filename", "unknown")
+        word_count = f.get("word_count", 0)
+        file_status = f.get("status", "")
+        file_era = f.get("era", "")
+        file_chars = f.get("characters") or []
+        file_themes = f.get("themes") or []
+
+        print(f"  {i}. {name}")
+        print(f"     {word_count:,} words · status: {file_status} · era: {file_era or '—'}")
+        if file_chars:
+            print(f"     Characters: {', '.join(file_chars[:6])}")
+        if file_themes:
+            print(f"     Themes: {', '.join(file_themes[:5])}")
+
+        # Show where the searched tag appears in this file
+        if tag_type in ["characters", "places", "themes"]:
+            occurrences = search_module.find_tag_in_file(f.get("path", ""), tag_type, search_value)
+            if occurrences:
+                print(f"     '{search_value}' appears in {len(occurrences)} paragraph(s):")
+                for occ in occurrences[:3]:
+                    print(f"       ¶{occ['paragraph']}: {occ['context']}")
+                if len(occurrences) > 3:
+                    print(f"       ... and {len(occurrences) - 3} more")
+        print()
+
+    pause()
+
+
+def _search_multi_tag(search_module):
+    """Search with multiple tag filters (AND logic)."""
+    print_header()
+    print("  MULTI-TAG SEARCH")
+    print("  " + "-" * 52)
+    print()
+    print("  Combine filters to find specific sections.")
+    print("  Example: character 'Nathan' AND place 'Colombia'")
+    print()
+    print("  Leave any field blank to skip it.")
+    print()
+
+    character = input("  Character (or press Enter to skip): ").strip()
+    place = input("  Place (or press Enter to skip): ").strip()
+    theme = input("  Theme (or press Enter to skip): ").strip()
+    era = input("  Era (or press Enter to skip): ").strip()
+
+    filters = {}
+    if character:
+        filters["characters"] = character
+    if place:
+        filters["places"] = place
+    if theme:
+        filters["themes"] = theme
+    if era:
+        filters["era"] = era
+
+    if not filters:
+        print("\n  No filters entered. Nothing to search for.")
+        pause()
+        return
+
+    print()
+    print(f"  Searching for files matching: {filters}")
+    print()
+
+    results = search_module.search_multi(filters)
+
+    if not results:
+        print("  No files found matching all your filters.")
+        pause()
+        return
+
+    print(f"  Found {len(results)} file(s) matching ALL filters:\n")
+
+    for i, f in enumerate(results, 1):
+        name = f.get("filename", "unknown")
+        word_count = f.get("word_count", 0)
+        file_status = f.get("status", "")
+        file_chars = f.get("characters") or []
+        file_places = f.get("places") or []
+        file_themes = f.get("themes") or []
+
+        print(f"  {i}. {name}")
+        print(f"     {word_count:,} words · status: {file_status}")
+        if file_chars:
+            print(f"     Characters: {', '.join(file_chars[:6])}")
+        if file_places:
+            print(f"     Places: {', '.join(file_places[:5])}")
+        if file_themes:
+            print(f"     Themes: {', '.join(file_themes[:5])}")
+        print()
+
+    pause()
+
+
+def action_coverage():
+    """Show tag coverage report for a file — proves full document was tagged."""
+    print_header()
+    print("  TAG COVERAGE REPORT")
+    print("  " + "-" * 52)
+    print()
+    print("  This shows you exactly which paragraphs in a file contain")
+    print("  which tags — so you can verify the whole document was")
+    print("  analyzed, not just the beginning.")
+    print()
+
+    file_path = pick_file("  Which file do you want a coverage report for?")
+    if not file_path:
+        pause()
+        return
+
+    print()
+    run_cli("coverage", file_path)
+    pause()
+
+
+def action_help_tagging():
+    """Explain how tagging works."""
+    print_header()
+    print("  HOW TAGGING WORKS")
+    print("  " + "-" * 52)
+    print()
+    print("  YOUR WORKFLOW:")
+    print("  ────────────────────────────────────────────────")
+    print("  1. You write in Word (or wherever you write)")
+    print("  2. You save text dumps into raw-dumps/ (.txt or .md)")
+    print("  3. The tool tags them (menu option 1)")
+    print("  4. You SEARCH the tags to find sections (menu option 6)")
+    print("  5. You analyze final-draft chapters (menu option 8)")
+    print()
+    print("  WHAT TAGGING DOES:")
+    print("  ────────────────────────────────────────────────")
+    print("  When you tag a file, the tool:")
+    print("    • Reads the ENTIRE file (in 50k-char chunks for NER)")
+    print("    • Sends the ENTIRE file to the AI (in 10k-char chunks)")
+    print("    • Detects: characters, places, era, themes, voice,")
+    print("      sensory details, emotional register, beats")
+    print("    • Writes all of that as YAML frontmatter at the TOP")
+    print("      of your file (between --- markers)")
+    print("    • Saves the same tags to a local database for searching")
+    print()
+    print("  YOUR TEXT IS NEVER MODIFIED. Only metadata is added.")
+    print()
+    print("  WHERE THE TAGS LIVE:")
+    print("  ────────────────────────────────────────────────")
+    print("  • In the file itself: YAML frontmatter at the top")
+    print("    (between --- markers, before your writing)")
+    print("  • In the database: data/scribbler.db (for fast searching)")
+    print("  • In the HTML viewer: visible on each file card")
+    print()
+    print("  WHEN YOU EXPORT TO WORD:")
+    print("  ────────────────────────────────────────────────")
+    print("  The tags are STRIPPED — you get clean text only.")
+    print("  This is intentional. The tags are the tool's index,")
+    print("  not part of your manuscript.")
+    print()
+    print("  HOW TO VERIFY FULL COVERAGE:")
+    print("  ────────────────────────────────────────────────")
+    print("  Pick menu option 7 (Tag coverage report) on any file.")
+    print("  It shows:")
+    print("    • How many paragraphs the file has")
+    print("    • How many chunks were analyzed")
+    print("    • Which paragraphs contain which tags")
+    print("    • Whether tags appear in beginning, middle, AND end")
+    print()
+    print("  HOW TO SEARCH:")
+    print("  ────────────────────────────────────────────────")
+    print("  Pick menu option 6 (Search by tags).")
+    print("  Examples:")
+    print("    • By character: find all sections mentioning 'Nathan'")
+    print("    • By place: find all sections set in 'Colombia'")
+    print("    • By theme: find all sections about 'masking'")
+    print("    • Multi-tag: 'Nathan' AND 'Colombia' together")
+    print()
+    print("  Each search result shows:")
+    print("    • File name, word count, status, era")
+    print("    • Other characters/themes in that file")
+    print("    • Which paragraphs contain your search term")
+    print("    • A snippet of surrounding text")
+    print()
+    pause()
+
+
 def action_settings():
     while True:
         print_header()
@@ -1007,26 +1299,32 @@ def main():
         elif choice == "5":
             action_open_folder()
         elif choice == "6":
-            action_analyze()
+            action_search()
         elif choice == "7":
-            action_analyze_all()
+            action_coverage()
         elif choice == "8":
-            action_market()
+            action_analyze()
         elif choice == "9":
-            action_links()
+            action_analyze_all()
         elif choice == "10":
-            action_dashboard()
+            action_market()
         elif choice == "11":
-            action_stats()
+            action_links()
         elif choice == "12":
-            action_export()
+            action_dashboard()
         elif choice == "13":
-            action_export_all()
+            action_stats()
         elif choice == "14":
-            action_delete_file()
+            action_export()
         elif choice == "15":
-            action_settings()
+            action_export_all()
         elif choice == "16":
+            action_delete_file()
+        elif choice == "17":
+            action_help_tagging()
+        elif choice == "18":
+            action_settings()
+        elif choice == "19":
             print_header()
             print("  Happy scribbling.")
             print()
@@ -1035,7 +1333,7 @@ def main():
             print()
             break
         else:
-            print("\n  Pick a number from 1 to 16.")
+            print("\n  Pick a number from 1 to 19.")
             pause()
 
 
