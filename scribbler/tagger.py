@@ -39,21 +39,65 @@ def split_sentences(text: str) -> List[str]:
     return [s.replace("<DOT>", ".").strip() for s in sentences if s.strip()]
 
 
+def _spacy_ner_chunked(text: str, nlp, entity_types: set, max_chars_per_chunk: int = 50000):
+    """Run spaCy NER on long text by processing it in chunks.
+
+    This ensures the ENTIRE document is analyzed, not just the first 50k chars.
+    """
+    entities = set()
+    if not nlp or not text:
+        return entities
+
+    # If text is short enough, process in one go
+    if len(text) <= max_chars_per_chunk:
+        doc = nlp(text)
+        for ent in doc.ents:
+            if ent.label_ in entity_types:
+                name = ent.text.strip()
+                if len(name) > 1:
+                    entities.add(name)
+        return entities
+
+    # For long text, process in chunks — break at paragraph boundaries when possible
+    start = 0
+    while start < len(text):
+        end = start + max_chars_per_chunk
+        chunk = text[start:end]
+
+        # Try to break at a paragraph boundary for cleaner NER
+        if end < len(text):
+            last_para = chunk.rfind('\n\n')
+            if last_para > max_chars_per_chunk // 2:
+                end = start + last_para
+                chunk = text[start:end]
+
+        # Process this chunk
+        try:
+            doc = nlp(chunk)
+            for ent in doc.ents:
+                if ent.label_ in entity_types:
+                    name = ent.text.strip()
+                    if len(name) > 1:
+                        entities.add(name)
+        except Exception:
+            pass  # Skip bad chunks rather than failing
+
+        start = end
+        if start >= len(text):
+            break
+
+    return entities
+
+
 def detect_characters(text: str, nlp=None) -> List[str]:
     """Detect character names. Uses spaCy NER if available, falls back to regex."""
     characters = set()
 
-    # Try spaCy
     if nlp is None:
         nlp = _get_spacy()
     if nlp:
-        doc = nlp(text[:50000])  # Limit for performance
-        for ent in doc.ents:
-            if ent.label_ == "PERSON":
-                name = ent.text.strip()
-                # Filter out single common words that get misclassified
-                if len(name) > 1 and name[0].isupper() and name.lower() not in ['the', 'and', 'but', 'she', 'he', 'they']:
-                    characters.add(name)
+        # Use chunked NER for long documents
+        characters = _spacy_ner_chunked(text, nlp, {"PERSON"})
     else:
         # Fallback: regex for capitalized words (not sentence starters)
         # Find all capitalized words/phrases that appear more than once
@@ -73,7 +117,6 @@ def detect_characters(text: str, nlp=None) -> List[str]:
         for m in set(matches):
             characters.add(m)
 
-    # Deduplicate (merge "Mom" and "Mother" if both appear? No — let the writer decide)
     return sorted(characters)[:20]  # Cap at 20
 
 
@@ -110,40 +153,38 @@ def detect_places(text: str, nlp=None) -> List[str]:
     if nlp is None:
         nlp = _get_spacy()
     if nlp:
-        doc = nlp(text[:50000])
-        for ent in doc.ents:
-            if ent.label_ in ("GPE", "LOC", "FAC", "ORG"):
-                name = ent.text.strip()
-                name_lower = name.lower()
+        # Use chunked NER for long documents (processes the ENTIRE text)
+        all_entities = _spacy_ner_chunked(text, nlp, {"GPE", "LOC", "FAC", "ORG"})
+        for name in all_entities:
+            name_lower = name.lower()
 
-                # Skip if it's a common false positive
-                if name_lower in NEVER_PLACES:
-                    continue
+            # Skip if it's a common false positive
+            if name_lower in NEVER_PLACES:
+                continue
 
-                # Skip if name is too short or just a number
-                if len(name) < 2 or name.isdigit():
-                    continue
+            # Skip if name is too short or just a number
+            if len(name) < 2 or name.isdigit():
+                continue
 
-                # For country/city names, require setting context
-                # A "setting" means the place is where something happened (lived, grew up, visited, went to school)
-                # NOT just mentioned (e.g., "I'd rather go to Australia" is a mention, not a setting)
-                if name_lower in FALSE_POSITIVES:
-                    # Look for setting-establishing verbs
-                    setting_pattern = r'\b(?:lived|live|grew up|born|raised|stayed|visit|visited|moved|move|went to school|school|work|working|grew|born in|raised in)\s+(?:in\s+)?' + re.escape(name) + r'\b'
-                    # Or the place appears with "in <name>" + a setting verb elsewhere
-                    in_pattern = r'\bin\s+' + re.escape(name) + r'\b'
-                    has_setting = bool(re.search(setting_pattern, text, re.IGNORECASE))
-                    has_in = bool(re.search(in_pattern, text, re.IGNORECASE))
+            # For country/city names, require setting context
+            # A "setting" means the place is where something happened (lived, grew up, visited, went to school)
+            # NOT just mentioned (e.g., "I'd rather go to Australia" is a mention, not a setting)
+            if name_lower in FALSE_POSITIVES:
+                # Look for setting-establishing verbs
+                setting_pattern = r'\b(?:lived|live|grew up|born|raised|stayed|visit|visited|moved|move|went to school|school|work|working|grew|born in|raised in)\s+(?:in\s+)?' + re.escape(name) + r'\b'
+                # Or the place appears with "in <name>" + a setting verb elsewhere
+                in_pattern = r'\bin\s+' + re.escape(name) + r'\b'
+                has_setting = bool(re.search(setting_pattern, text, re.IGNORECASE))
+                has_in = bool(re.search(in_pattern, text, re.IGNORECASE))
 
-                    # Also check if it appears 3+ times (suggesting it's a real recurring setting)
-                    count = len(re.findall(r'\b' + re.escape(name) + r'\b', text, re.IGNORECASE))
+                # Also check if it appears 3+ times (suggesting it's a real recurring setting)
+                count = len(re.findall(r'\b' + re.escape(name) + r'\b', text, re.IGNORECASE))
 
-                    if not has_setting and (not has_in or count < 3) and count < 3:
-                        continue  # Skip this — it's just a mention, not a setting
+                if not has_setting and (not has_in or count < 3) and count < 3:
+                    continue  # Skip this — it's just a mention, not a setting
 
-                # Count occurrences
-                place_counts[name] = place_counts.get(name, 0) + 1
-                places.add(name)
+            place_counts[name] = place_counts.get(name, 0) + 1
+            places.add(name)
     else:
         # Fallback: look for "in/at/to the [Place]" patterns
         patterns = [
@@ -339,36 +380,144 @@ def _get_spacy():
 
 
 def llm_assisted_tagging(text: str) -> Optional[Dict]:
-    """Use LLM to extract deeper tags: beats, themes, emotional register, summary."""
+    """Use LLM to extract deeper tags: beats, themes, emotional register, summary.
+
+    For long documents, chunks the text and processes each chunk, then merges
+    the results so the ENTIRE document is analyzed, not just the beginning.
+    """
     if not llm.llm_available():
         return None
 
-    # Truncate very long texts
-    sample = text[:8000] if len(text) > 8000 else text
+    # If the text is short enough, process it in one go
+    if len(text) <= 12000:
+        return _llm_tag_single_chunk(text)
 
+    # For long texts, split into chunks and process each
+    # Use ~10,000 char chunks with 1,000 char overlap to catch boundary content
+    chunk_size = 10000
+    overlap = 1000
+    chunks = []
+    start = 0
+    while start < len(text):
+        end = start + chunk_size
+        chunk = text[start:end]
+        # Try to break at a paragraph boundary for cleaner chunks
+        if end < len(text):
+            last_para = chunk.rfind('\n\n')
+            if last_para > chunk_size // 2:
+                end = start + last_para
+                chunk = text[start:end]
+        chunks.append(chunk)
+        start = end - overlap if end < len(text) else end
+        if start >= len(text):
+            break
+
+    # Process each chunk
+    all_beats = []
+    all_themes = []
+    chunk_summaries = []
+    chunk_emotions = []
+    strength_signals = []
+
+    for i, chunk in enumerate(chunks):
+        result = _llm_tag_single_chunk(chunk, chunk_num=i+1, total_chunks=len(chunks))
+        if result:
+            all_beats.extend(result.get("beats", []))
+            all_themes.extend(result.get("themes", []))
+            if result.get("summary"):
+                chunk_summaries.append(result["summary"])
+            if result.get("emotional_register"):
+                chunk_emotions.append(result["emotional_register"])
+            if result.get("strength_signal"):
+                strength_signals.append(result["strength_signal"])
+
+    # Deduplicate themes (keep order by frequency)
+    from collections import Counter
+    theme_counts = Counter(all_themes)
+    merged_themes = [t for t, _ in theme_counts.most_common(8)]
+
+    # Deduplicate beats (by similarity — keep first occurrence of each unique beat)
+    seen_beats = set()
+    unique_beats = []
+    for beat in all_beats:
+        beat_lower = beat.lower().strip()
+        if beat_lower not in seen_beats:
+            seen_beats.add(beat_lower)
+            unique_beats.append(beat)
+    # Cap at 30 beats to keep metadata manageable
+    unique_beats = unique_beats[:30]
+
+    # Merge summaries — if multiple chunks, ask LLM to synthesize
+    if len(chunk_summaries) > 1:
+        merged_summary = _llm_merge_summaries(chunk_summaries)
+    else:
+        merged_summary = chunk_summaries[0] if chunk_summaries else ""
+
+    # Pick dominant emotional register (most common)
+    emotion_counts = Counter(chunk_emotions)
+    dominant_emotion = emotion_counts.most_common(1)[0][0] if emotion_counts else None
+
+    # Pick first strength signal (or merge if multiple)
+    strength = strength_signals[0] if strength_signals else None
+
+    return {
+        "beats": unique_beats,
+        "themes": merged_themes,
+        "emotional_register": dominant_emotion,
+        "summary": merged_summary,
+        "strength_signal": strength,
+    }
+
+
+def _llm_tag_single_chunk(text: str, chunk_num: int = 1, total_chunks: int = 1) -> Optional[Dict]:
+    """Process a single chunk of text with the LLM."""
     system = """You are a literary analysis assistant helping an AUDHD writer organize their memoir brain dumps.
 Your job is to read the text and extract structured metadata. You are gentle, observant, and never judgmental.
 You never say the writing is bad. You describe what you notice and offer the writer metadata to use or ignore."""
 
-    prompt = f"""Read this text and extract the following metadata as JSON.
+    chunk_note = f" (This is chunk {chunk_num} of {total_chunks} from a longer document.)" if total_chunks > 1 else ""
+
+    prompt = f"""Read this text and extract the following metadata as JSON.{chunk_note}
 
 Text:
 ---
-{sample}
+{text}
 ---
 
 Respond with this JSON structure:
 {{
-  "beats": ["one-line description of each scene beat or unit of change"],
-  "themes": ["3-5 main themes you notice, single words or short phrases"],
-  "emotional_register": "the dominant emotional tone (one of: tender, enraged, numb, funny, grief, anxious, tender_remembrance, defensive, or your own word)",
-  "summary": "3-line plain-English summary of what this text is about, what it contains, and what the writer might do with it",
-  "strength_signal": "one sentence describing what feels strong or alive in this text"
+  "beats": ["one-line description of each scene beat or unit of change in this section"],
+  "themes": ["3-5 main themes you notice in this section, single words or short phrases"],
+  "emotional_register": "the dominant emotional tone of this section (one of: tender, enraged, numb, funny, grief, anxious, tender_remembrance, defensive, or your own word)",
+  "summary": "2-3 line plain-English summary of what this section contains",
+  "strength_signal": "one sentence describing what feels strong or alive in this section"
 }}
 
 Respond with valid JSON only."""
 
     return llm.llm_json(prompt, system)
+
+
+def _llm_merge_summaries(summaries: list) -> str:
+    """Ask the LLM to merge multiple chunk summaries into one cohesive summary."""
+    if not summaries:
+        return ""
+
+    if len(summaries) == 1:
+        return summaries[0]
+
+    system = """You are a literary analysis assistant. You help organize summaries of a long document into one cohesive overview."""
+
+    summaries_text = "\n\n".join(f"Section {i+1} summary: {s}" for i, s in enumerate(summaries))
+
+    prompt = f"""These are summaries of different sections of a long memoir document. Merge them into one cohesive 3-line summary that captures the whole document.
+
+{summaries_text}
+
+Respond with just the merged summary (3 lines, plain English). No JSON, no labels."""
+
+    result = llm.llm_complete(prompt, system)
+    return result.strip() if result else summaries[0]
 
 
 def tag_file(file_path: str, use_llm: bool = True) -> Dict:
