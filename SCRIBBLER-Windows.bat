@@ -13,6 +13,12 @@ if not exist ".venv\Scripts\activate.bat" (
     exit /b 1
 )
 
+REM Clear Python cache so the latest code is always used
+echo   Clearing cache...
+if exist "scribbler\__pycache__" rmdir /s /q "scribbler\__pycache__"
+if exist "scribbler\analyzers\__pycache__" rmdir /s /q "scribbler\analyzers\__pycache__"
+if exist "scribbler\dashboard\__pycache__" rmdir /s /q "scribbler\dashboard\__pycache__"
+
 REM Activate virtual environment
 call .venv\Scripts\activate.bat
 if errorlevel 1 (
