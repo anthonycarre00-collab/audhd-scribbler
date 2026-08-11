@@ -21,7 +21,7 @@ PrivilegesRequired=lowest
 UninstallDisplayIcon={app}\{#ExeName}
 
 [Files]
-Source: "build\{#ExeName}"; DestDir: "{app}"; Flags: ignoreversion
+Source: "..\dist\{#ExeName}"; DestDir: "{app}"; Flags: ignoreversion
 
 [Icons]
 Name: "{autodesktop}\{#AppName}"; Filename: "{app}\{#ExeName}"; WorkingDir: "{app}"
