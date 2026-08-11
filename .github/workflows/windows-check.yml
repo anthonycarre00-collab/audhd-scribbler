@@ -1,0 +1,22 @@
+name: Windows Python check
+
+on:
+  push:
+    branches: [main, ux-redesign]
+  pull_request:
+
+jobs:
+  syntax:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Compile Python sources
+        shell: python
+        run: |
+          import compileall
+          ok = compileall.compile_dir('scribbler', quiet=1)
+          if not ok:
+              raise SystemExit('Python syntax check failed')
