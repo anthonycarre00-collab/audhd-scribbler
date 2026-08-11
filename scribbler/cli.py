@@ -133,10 +133,13 @@ def label_all(folder: str, no_llm: bool):
         click.echo(f"  Folder not found: {folder_path}", err=True)
         sys.exit(1)
 
-    # Find all text files
+    # Find all text files (skip README.md and other meta files)
     files = []
     for ext in ["*.txt", "*.md", "*.text"]:
-        files.extend(folder_path.glob(ext))
+        for f in folder_path.glob(ext):
+            if f.name.upper() == "README.MD":
+                continue  # Skip README files — they're folder descriptions, not writing
+            files.append(f)
 
     if not files:
         click.echo(f"  No text files found in {folder}/")

@@ -104,7 +104,8 @@ def _try_zai_cli(prompt: str, system: str = None) -> Optional[str]:
         cmd = [zai_path, "chat", "-p", prompt]
         if system:
             cmd.extend(["-s", system])
-        result = subprocess.run(cmd, capture_output=True, text=True, timeout=90)
+        result = subprocess.run(cmd, capture_output=True, text=True, timeout=90,
+                                encoding='utf-8', errors='replace')
         if result.returncode != 0:
             return None
 

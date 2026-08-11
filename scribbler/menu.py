@@ -579,12 +579,14 @@ def _setup_zai_cli():
             result = subprocess.run(
                 npm_cmd,
                 shell=True,
-                capture_output=True, text=True, timeout=120
+                capture_output=True, text=True, timeout=120,
+                encoding='utf-8', errors='replace'
             )
         else:
             result = subprocess.run(
                 ["npm", "install", "-g", "z-ai-web-dev-sdk"],
-                capture_output=True, text=True, timeout=120
+                capture_output=True, text=True, timeout=120,
+                encoding='utf-8', errors='replace'
             )
 
         if result.returncode == 0:
