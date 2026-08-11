@@ -535,6 +535,7 @@ def _setup_zai_cli():
     print()
 
     # Check for node
+    import shutil
     node_installed = shutil.which("node") is not None or shutil.which("npm") is not None
 
     if node_installed:
