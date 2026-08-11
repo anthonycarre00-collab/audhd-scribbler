@@ -29,6 +29,7 @@ from . import tagger
 from . import db
 from . import export
 from . import llm
+from .file_io import read_text_file
 from .analyzers import craft, voice_tense, characters, continuity, themes, editor, market as market_analyzer
 from .dashboard import generate as generate_dashboard
 
@@ -185,7 +186,7 @@ def analyze(file_path: str, tool):
         sys.exit(1)
 
     # Read text (strip frontmatter)
-    content = path.read_text(encoding="utf-8")
+    content = read_text_file(path)
     if content.startswith("---"):
         end = content.find("---", 3)
         if end != -1:
@@ -341,7 +342,7 @@ def analyze_all():
     for ch in chapters:
         click.echo(f"\n  → {ch.name}")
         # Run analysis (simplified — just save, don't print full report)
-        content = ch.read_text(encoding="utf-8")
+        content = read_text_file(ch)
         if content.startswith("---"):
             end = content.find("---", 3)
             if end != -1:
@@ -462,7 +463,7 @@ def next_action():
         for ext in ["*.txt", "*.md"]:
             for f in raw_dumps.glob(ext):
                 # Check if it has frontmatter
-                content = f.read_text(encoding="utf-8")[:200]
+                content = read_text_file(f)[:200]
                 if not content.startswith("---"):
                     untagged.append(f)
         if untagged:

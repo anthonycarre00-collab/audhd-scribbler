@@ -13,6 +13,7 @@ from typing import Dict, Optional
 from datetime import datetime
 
 from .config import PROJECT_ROOT
+from .file_io import read_text_file, write_text_file
 from . import db
 
 
@@ -22,14 +23,14 @@ def export_markdown(file_path: str, output_path: str = None) -> str:
     if not path.exists():
         raise FileNotFoundError(f"File not found: {file_path}")
 
-    content = path.read_text(encoding="utf-8")
+    content = read_text_file(path)
 
     if output_path is None:
         output_path = str(PROJECT_ROOT / "data" / "exports" / f"{path.stem}.md")
 
     out_path = Path(output_path)
     out_path.parent.mkdir(parents=True, exist_ok=True)
-    out_path.write_text(content, encoding="utf-8")
+    write_text_file(out_path, content)
     return str(out_path)
 
 
@@ -39,7 +40,7 @@ def export_plain_text(file_path: str, output_path: str = None) -> str:
     if not path.exists():
         raise FileNotFoundError(f"File not found: {file_path}")
 
-    content = path.read_text(encoding="utf-8")
+    content = read_text_file(path)
 
     # Strip YAML frontmatter
     if content.startswith("---"):
@@ -55,7 +56,7 @@ def export_plain_text(file_path: str, output_path: str = None) -> str:
 
     out_path = Path(output_path)
     out_path.parent.mkdir(parents=True, exist_ok=True)
-    out_path.write_text(content, encoding="utf-8")
+    write_text_file(out_path, content)
     return str(out_path)
 
 
@@ -73,7 +74,7 @@ def export_docx(file_path: str, output_path: str = None) -> str:
     if not path.exists():
         raise FileNotFoundError(f"File not found: {file_path}")
 
-    content = path.read_text(encoding="utf-8")
+    content = read_text_file(path)
 
     # Strip YAML frontmatter for the DOCX body
     body_text = content
@@ -172,5 +173,5 @@ def export_analysis_report(file_path: str, analysis_results: Dict, output_path: 
                     else:
                         lines.append(f"{val}")
 
-    out_path.write_text("\n".join(lines), encoding="utf-8")
+    write_text_file(out_path, "\n".join(lines))
     return str(out_path)

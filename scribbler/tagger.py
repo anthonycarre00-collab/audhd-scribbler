@@ -19,6 +19,7 @@ from .config import (
 )
 from . import llm
 from . import db
+from .file_io import read_text_file, write_text_file
 
 
 def count_words(text: str) -> int:
@@ -330,7 +331,7 @@ def tag_file(file_path: str, use_llm: bool = True) -> Dict:
     if not path.exists():
         raise FileNotFoundError(f"File not found: {file_path}")
 
-    text = path.read_text(encoding="utf-8")
+    text = read_text_file(path)
     word_count = count_words(text)
 
     # Strip existing YAML frontmatter before analysis
@@ -470,7 +471,7 @@ def write_frontmatter(path: Path, meta: Dict, body_text: str):
     if meta.get("summary"):
         new_content += f"\n\n<!-- SCRIBBLER SUMMARY\n{meta['summary']}\n-->\n"
 
-    path.write_text(new_content, encoding="utf-8")
+    write_text_file(path, new_content)
 
 
 def tag_all_in_folder(folder_name: str = "raw-dumps", use_llm: bool = True) -> List[Dict]:
