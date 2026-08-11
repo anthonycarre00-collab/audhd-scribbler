@@ -17,6 +17,8 @@ sys.path.insert(0, str(SCRIPT_DIR))
 
 from scribbler.config import PROJECT_ROOT, FOLDERS
 from scribbler import db
+from scribbler import settings
+from scribbler import llm
 
 
 def clear_screen():
@@ -30,23 +32,38 @@ def print_header():
     print("  " + " " * 12 + "THE AUDHD SCRIBBLER")
     print("  " + " " * 8 + "Your memoir's calm companion")
     print("  " + "=" * 54)
+    # Show LLM status
+    status = llm.llm_status()
+    print(f"  AI: {status}")
     print()
 
 
 def print_menu():
     print("  What would you like to do?")
     print()
+    print("  ── WRITING ──────────────────────────────────")
     print("    1.  Tag all my dumps  (organize raw text files)")
-    print("    2.  Open the dashboard  (see everything at a glance)")
+    print("    2.  View my files  (see all tagged files with metadata)")
     print("    3.  What should I do next?  (3 suggested actions)")
-    print("    4.  Analyze a chapter  (run the full analysis suite)")
-    print("    5.  Analyze ALL chapters  (batch analysis)")
-    print("    6.  Show project stats  (word count, file count)")
-    print("    7.  Export a file  (to Word, markdown, or plain text)")
-    print("    8.  Market research  (find comparable titles)")
-    print("    9.  Find links between files  (what connects to what)")
-    print("    10. Open the raw-dumps folder  (drop new files here)")
-    print("    11. Quit")
+    print("    4.  Open the raw-dumps folder  (drop new files here)")
+    print()
+    print("  ── ANALYSIS ─────────────────────────────────")
+    print("    5.  Analyze a chapter  (run the full analysis suite)")
+    print("    6.  Analyze ALL chapters  (batch analysis)")
+    print("    7.  Market research  (find comparable titles)")
+    print("    8.  Find links between files  (what connects to what)")
+    print()
+    print("  ── VIEW ─────────────────────────────────────")
+    print("    9.  Open the dashboard  (visual overview)")
+    print("    10. Show project stats  (word count, file count)")
+    print()
+    print("  ── EXPORT ───────────────────────────────────")
+    print("    11. Export a file  (to Word, markdown, or plain text)")
+    print("    12. Export all tagged files  (batch export)")
+    print()
+    print("  ── SETTINGS ─────────────────────────────────")
+    print("    13. Settings  (Z.ai API key, theme, etc.)")
+    print("    14. Quit")
     print()
 
 
@@ -54,7 +71,7 @@ def get_choice(prompt="  Pick a number: "):
     try:
         return input(prompt).strip()
     except (EOFError, KeyboardInterrupt):
-        return "11"
+        return "14"
 
 
 def pause():
@@ -89,6 +106,7 @@ def pick_file(prompt="  Pick a file:"):
     if not files:
         print("\n  No text files found.")
         print("  Drop .txt or .md files into the 'raw-dumps' folder first.")
+        print("  (Menu option 4 opens that folder for you)")
         return None
 
     print(prompt)
@@ -129,7 +147,7 @@ def action_label_all():
         print("  No text files found in 'raw-dumps/'.")
         print()
         print("  To add files:")
-        print("    1. Open the 'raw-dumps' folder")
+        print("    1. Open the 'raw-dumps' folder (menu option 4)")
         print("    2. Drop your .txt or .md files in there")
         print("    3. Come back and run this again")
         print()
@@ -138,9 +156,52 @@ def action_label_all():
 
     print(f"  Found {len(files)} file(s) to tag.")
     print()
-    input("  Press Enter to start tagging...")
 
+    # Show LLM status
+    if llm.llm_available():
+        print(f"  AI: {llm.llm_status()}")
+        print("  → Beats, themes, and summaries will be AI-assisted.")
+    else:
+        print("  AI: Not configured (rule-based only).")
+        print("  → To enable AI-assisted tagging, set your Z.ai API key (menu option 13).")
+    print()
+
+    input("  Press Enter to start tagging...")
     run_cli("label-all")
+
+    # After tagging, offer to view files
+    print()
+    print("  ────────────────────────────────────────────────")
+    print("  Tagging complete! Want to see your tagged files?")
+    print("  Pick option 2 from the menu to view them in your browser.")
+    print("  ────────────────────────────────────────────────")
+    pause()
+
+
+def action_view_files():
+    print_header()
+    print("  VIEW MY FILES")
+    print("  " + "-" * 52)
+    print()
+    print("  Generating a browsable view of all your tagged files...")
+    print()
+
+    from scribbler.dashboard.file_viewer import generate
+    html_path = generate()
+
+    print(f"  ✓ Generated: {html_path}")
+    print()
+    print("  Opening in your browser...")
+    webbrowser.open(f"file://{os.path.abspath(html_path)}")
+
+    print()
+    print("  Each file shows:")
+    print("    • Status (seedling/growing/shaping/polishing/resting)")
+    print("    • Word count, era, voice, emotional register")
+    print("    • Characters, places, themes, sensory details")
+    print("    • AI-generated summary")
+    print("    • File path (so you can open it in your editor)")
+    pause()
 
 
 def action_dashboard():
@@ -151,20 +212,24 @@ def action_dashboard():
     print("  Generating your dashboard...")
     print()
 
-    # Generate dashboard without auto-opening (we'll open it ourselves)
     from scribbler.dashboard.generator import generate
     html_path = generate()
 
-    print(f"  Dashboard generated: {html_path}")
+    print(f"  ✓ Generated: {html_path}")
     print()
     print("  Opening in your browser...")
-
-    # Open in browser
     webbrowser.open(f"file://{os.path.abspath(html_path)}")
 
     print()
-    print("  The dashboard should now be open in your browser.")
-    print("  You can close this window, or pick another option.")
+    print("  The dashboard includes:")
+    print("    • Overview stats and status badges")
+    print("    • Chapter grid with status dots")
+    print("    • Theme constellation heatmap")
+    print("    • Timeline of recent activity")
+    print("    • Relationship map (files ↔ characters ↔ themes)")
+    print("    • Orphan tray (unfiled dumps)")
+    print("    • Theme frequency bars")
+    print("    • Character appearances")
     pause()
 
 
@@ -222,9 +287,9 @@ def action_export():
 
     print()
     print("  Choose a format:")
-    print("    1. Word document (.docx)")
-    print("    2. Markdown (.md)")
-    print("    3. Plain text (.txt)")
+    print("    1. Word document (.docx) — for sharing or editing in Word")
+    print("    2. Markdown (.md) — with YAML frontmatter metadata")
+    print("    3. Plain text (.txt) — just the text, no metadata")
     print()
     fmt_choice = get_choice("  Format (1-3): ")
 
@@ -237,6 +302,74 @@ def action_export():
 
     print()
     run_cli("export", file_path, "-f", fmt)
+
+    # Open the export folder
+    export_dir = PROJECT_ROOT / "data" / "exports"
+    print()
+    print(f"  Opening the export folder: {export_dir}")
+    if sys.platform == "win32":
+        os.startfile(str(export_dir))
+    elif sys.platform == "darwin":
+        subprocess.run(["open", str(export_dir)])
+    else:
+        subprocess.run(["xdg-open", str(export_dir)])
+
+
+def action_export_all():
+    print_header()
+    print("  EXPORT ALL TAGGED FILES")
+    print("  " + "-" * 52)
+    print()
+    print("  This exports all your tagged files to Word documents")
+    print("  in the data/exports/ folder.")
+    print()
+
+    files = find_text_files()
+    if not files:
+        print("  No files found to export.")
+        pause()
+        return
+
+    print(f"  Found {len(files)} file(s) to export.")
+    print()
+    print("  Format:")
+    print("    1. Word document (.docx)")
+    print("    2. Plain text (.txt)")
+    print()
+    fmt_choice = get_choice("  Format (1-2): ")
+    fmt = "docx" if fmt_choice == "1" else "txt" if fmt_choice == "2" else None
+
+    if not fmt:
+        print("\n  Invalid choice.")
+        pause()
+        return
+
+    print()
+    input(f"  Press Enter to export {len(files)} files as {fmt}...")
+
+    export_dir = PROJECT_ROOT / "data" / "exports"
+    export_dir.mkdir(parents=True, exist_ok=True)
+
+    success = 0
+    for f in files:
+        try:
+            run_cli("export", str(f), "-f", fmt)
+            success += 1
+        except Exception as e:
+            print(f"  Error exporting {f.name}: {e}")
+
+    print()
+    print(f"  ✓ Exported {success}/{len(files)} files to: {export_dir}")
+
+    # Open the export folder
+    if sys.platform == "win32":
+        os.startfile(str(export_dir))
+    elif sys.platform == "darwin":
+        subprocess.run(["open", str(export_dir)])
+    else:
+        subprocess.run(["xdg-open", str(export_dir)])
+
+    pause()
 
 
 def action_market():
@@ -306,6 +439,83 @@ def action_open_folder():
     pause()
 
 
+def action_settings():
+    print_header()
+    print("  SETTINGS")
+    print("  " + "-" * 52)
+    print()
+
+    current = settings.load_settings()
+
+    print(f"  Current settings:")
+    print()
+    print(f"    Z.ai API key: {'✓ Set (' + current.get('zai_api_key', '')[:8] + '...)' if current.get('zai_api_key') else '✗ Not set'}")
+    print(f"    Z.ai model:   {current.get('zai_model', 'glm-4-plus')}")
+    print(f"    Git auto-commit: {'On' if current.get('git_auto_commit') else 'Off'}")
+    print(f"    Stale nudge:  {current.get('stale_nudge_days', 7)} days")
+    print()
+    print("  ────────────────────────────────────────────────")
+    print()
+    print("  What do you want to change?")
+    print()
+    print("    1. Set Z.ai API key  (enables AI-assisted tagging & analysis)")
+    print("    2. Clear API key")
+    print("    3. Test API connection")
+    print("    4. Back to menu")
+    print()
+
+    choice = get_choice("  Pick a number: ")
+
+    if choice == "1":
+        print()
+        print("  To get a Z.ai API key:")
+        print("    1. Go to https://z.ai")
+        print("    2. Sign up / log in")
+        print("    3. Go to API settings")
+        print("    4. Generate an API key")
+        print("    5. Copy it")
+        print()
+        api_key = input("  Paste your API key here: ").strip()
+        if api_key:
+            settings.set_setting("zai_api_key", api_key)
+            print()
+            print("  ✓ API key saved to settings.json")
+            print()
+            # Test it
+            print("  Testing connection...")
+            if llm.llm_available():
+                result = llm.llm_complete("Say 'hello' and nothing else.")
+                if result:
+                    print(f"  ✓ Connection works! Z.ai responded: {result[:50]}")
+                else:
+                    print("  ⚠ API key saved but connection test failed.")
+                    print("    Check that the key is valid and you have credits.")
+            else:
+                print("  ⚠ API key saved but openai package not available.")
+        else:
+            print("  No key entered. Nothing changed.")
+        pause()
+
+    elif choice == "2":
+        settings.set_setting("zai_api_key", "")
+        print()
+        print("  ✓ API key cleared.")
+        pause()
+
+    elif choice == "3":
+        print()
+        if not llm.llm_available():
+            print("  ✗ No API key set. Set one first (option 1).")
+        else:
+            print("  Testing connection...")
+            result = llm.llm_complete("Say 'hello' and nothing else.")
+            if result:
+                print(f"  ✓ Connection works! Z.ai responded: {result[:50]}")
+            else:
+                print("  ✗ Connection failed. Check your API key.")
+        pause()
+
+
 def main():
     while True:
         print_header()
@@ -316,33 +526,39 @@ def main():
         if choice == "1":
             action_label_all()
         elif choice == "2":
-            action_dashboard()
+            action_view_files()
         elif choice == "3":
             action_next()
         elif choice == "4":
-            action_analyze()
-        elif choice == "5":
-            action_analyze_all()
-        elif choice == "6":
-            action_stats()
-        elif choice == "7":
-            action_export()
-        elif choice == "8":
-            action_market()
-        elif choice == "9":
-            action_links()
-        elif choice == "10":
             action_open_folder()
+        elif choice == "5":
+            action_analyze()
+        elif choice == "6":
+            action_analyze_all()
+        elif choice == "7":
+            action_market()
+        elif choice == "8":
+            action_links()
+        elif choice == "9":
+            action_dashboard()
+        elif choice == "10":
+            action_stats()
         elif choice == "11":
+            action_export()
+        elif choice == "12":
+            action_export_all()
+        elif choice == "13":
+            action_settings()
+        elif choice == "14":
             print_header()
             print("  Happy scribbling.")
             print()
             print("  Your writing stays on your machine. Nothing leaves unless")
-            print("  you use the LLM-assisted tagging (which uses Z.ai).")
+            print("  you use AI-assisted tagging (which calls Z.ai).")
             print()
             break
         else:
-            print("\n  Pick a number from 1 to 11.")
+            print("\n  Pick a number from 1 to 14.")
             pause()
 
 
@@ -353,5 +569,7 @@ if __name__ == "__main__":
         print("\n\n  Happy scribbling.\n")
     except Exception as e:
         print(f"\n  Something went wrong: {e}")
+        import traceback
+        traceback.print_exc()
         print()
         pause()

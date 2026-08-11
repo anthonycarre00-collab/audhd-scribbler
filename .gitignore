@@ -18,6 +18,9 @@ data/
 *.db-wal
 *.db-shm
 
+# Settings (contains API key — NEVER commit this)
+settings.json
+
 # OS
 .DS_Store
 Thumbs.db
