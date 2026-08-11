@@ -440,80 +440,298 @@ def action_open_folder():
 
 
 def action_settings():
+    while True:
+        print_header()
+        print("  SETTINGS")
+        print("  " + "-" * 52)
+        print()
+
+        current = settings.load_settings()
+        provider_id = current.get("provider", "gemini")
+        provider_config = settings.get_provider_config(provider_id)
+
+        # Show current status
+        print("  Current AI provider:")
+        print(f"    {provider_config.get('name', provider_id)}")
+        if provider_id == "ollama":
+            print(f"    Status: {llm.llm_status()}")
+        else:
+            key_set = bool(current.get("api_key", ""))
+            if key_set:
+                key_preview = current.get("api_key", "")[:8] + "..."
+                print(f"    API key: ✓ Set ({key_preview})")
+            else:
+                print(f"    API key: ✗ Not set")
+            print(f"    Status: {llm.llm_status()}")
+        print()
+        print("  ────────────────────────────────────────────────")
+        print()
+        print("  Pick an AI provider (all work, pick whichever you prefer):")
+        print()
+        print("    1.  Google Gemini  (FREE — recommended, easy to get)")
+        print("    2.  Groq           (FREE — very fast, llama models)")
+        print("    3.  Ollama         (LOCAL — completely free, runs on your machine)")
+        print("    4.  Z.ai           (requires credits — the one that failed)")
+        print()
+        print("    5.  Test current connection")
+        print("    6.  Clear API key")
+        print("    7.  Back to menu")
+        print()
+
+        choice = get_choice("  Pick a number: ")
+
+        if choice == "1":
+            _setup_gemini()
+        elif choice == "2":
+            _setup_groq()
+        elif choice == "3":
+            _setup_ollama()
+        elif choice == "4":
+            _setup_zai()
+        elif choice == "5":
+            _test_connection()
+        elif choice == "6":
+            settings.set_setting("api_key", "")
+            print()
+            print("  ✓ API key cleared.")
+            pause()
+        elif choice == "7":
+            break
+
+
+def _setup_gemini():
+    """Set up Google Gemini (free)."""
     print_header()
-    print("  SETTINGS")
+    print("  GOOGLE GEMINI SETUP (FREE)")
     print("  " + "-" * 52)
     print()
-
-    current = settings.load_settings()
-
-    print(f"  Current settings:")
+    print("  Gemini is Google's AI. The free tier is generous:")
+    print("    • 15 requests per minute")
+    print("    • 1,500 requests per day")
+    print("    • No credit card needed")
     print()
-    print(f"    Z.ai API key: {'✓ Set (' + current.get('zai_api_key', '')[:8] + '...)' if current.get('zai_api_key') else '✗ Not set'}")
-    print(f"    Z.ai model:   {current.get('zai_model', 'glm-4-plus')}")
-    print(f"    Git auto-commit: {'On' if current.get('git_auto_commit') else 'Off'}")
-    print(f"    Stale nudge:  {current.get('stale_nudge_days', 7)} days")
+    print("  ────────────────────────────────────────────────")
+    print("  HOW TO GET YOUR FREE API KEY:")
+    print("  ────────────────────────────────────────────────")
+    print()
+    print("    1. Open your browser and go to:")
+    print("       https://aistudio.google.com/app/apikey")
+    print()
+    print("    2. Sign in with any Google account")
+    print()
+    print("    3. Click the blue 'Create API key' button")
+    print()
+    print("    4. Pick 'Create API key in new project' (the easy option)")
+    print()
+    print("    5. Copy the key (it starts with 'AIza...')")
+    print()
+    print("    6. Paste it below")
     print()
     print("  ────────────────────────────────────────────────")
     print()
-    print("  What do you want to change?")
+
+    api_key = input("  Paste your Gemini API key: ").strip()
+    if not api_key:
+        print("\n  No key entered. Nothing changed.")
+        pause()
+        return
+
+    # Save settings
+    settings.set_setting("provider", "gemini")
+    settings.set_setting("api_key", api_key)
+    settings.set_setting("model", "gemini-2.0-flash")
+
     print()
-    print("    1. Set Z.ai API key  (enables AI-assisted tagging & analysis)")
-    print("    2. Clear API key")
-    print("    3. Test API connection")
-    print("    4. Back to menu")
+    print("  ✓ Saved. Testing connection...")
+    result = llm.llm_complete("Say 'hello' and nothing else.")
+    if result:
+        print(f"  ✓✓✓ SUCCESS! Gemini responded: {result[:60]}")
+        print()
+        print("  You're all set. AI-assisted tagging and analysis now work.")
+    else:
+        print()
+        print("  ✗ Connection failed. Common causes:")
+        print("    • Key was copied with extra spaces (try again)")
+        print("    • Key is from a region that doesn't support Gemini")
+        print("    • You're on a corporate network blocking Google APIs")
+    pause()
+
+
+def _setup_groq():
+    """Set up Groq (free, very fast)."""
+    print_header()
+    print("  GROQ SETUP (FREE, VERY FAST)")
+    print("  " + "-" * 52)
+    print()
+    print("  Groq runs Llama and Mixtral models on custom hardware.")
+    print("  Stupidly fast. Generous free tier:")
+    print("    • 30 requests per minute")
+    print("    • 14,400 requests per day")
+    print("    • No credit card needed")
+    print()
+    print("  ────────────────────────────────────────────────")
+    print("  HOW TO GET YOUR FREE API KEY:")
+    print("  ────────────────────────────────────────────────")
+    print()
+    print("    1. Open your browser and go to:")
+    print("       https://console.groq.com/keys")
+    print()
+    print("    2. Sign up (Google or GitHub login — one click)")
+    print()
+    print("    3. Click 'Create API Key'")
+    print()
+    print("    4. Give it any name (e.g. 'scribbler')")
+    print()
+    print("    5. Copy the key (starts with 'gsk_...')")
+    print()
+    print("    6. Paste it below")
+    print()
+    print("  ────────────────────────────────────────────────")
     print()
 
-    choice = get_choice("  Pick a number: ")
-
-    if choice == "1":
-        print()
-        print("  To get a Z.ai API key:")
-        print("    1. Go to https://z.ai")
-        print("    2. Sign up / log in")
-        print("    3. Go to API settings")
-        print("    4. Generate an API key")
-        print("    5. Copy it")
-        print()
-        api_key = input("  Paste your API key here: ").strip()
-        if api_key:
-            settings.set_setting("zai_api_key", api_key)
-            print()
-            print("  ✓ API key saved to settings.json")
-            print()
-            # Test it
-            print("  Testing connection...")
-            if llm.llm_available():
-                result = llm.llm_complete("Say 'hello' and nothing else.")
-                if result:
-                    print(f"  ✓ Connection works! Z.ai responded: {result[:50]}")
-                else:
-                    print("  ⚠ API key saved but connection test failed.")
-                    print("    Check that the key is valid and you have credits.")
-            else:
-                print("  ⚠ API key saved but openai package not available.")
-        else:
-            print("  No key entered. Nothing changed.")
+    api_key = input("  Paste your Groq API key: ").strip()
+    if not api_key:
+        print("\n  No key entered. Nothing changed.")
         pause()
+        return
 
-    elif choice == "2":
-        settings.set_setting("zai_api_key", "")
-        print()
-        print("  ✓ API key cleared.")
-        pause()
+    settings.set_setting("provider", "groq")
+    settings.set_setting("api_key", api_key)
+    settings.set_setting("model", "llama-3.3-70b-versatile")
 
-    elif choice == "3":
+    print()
+    print("  ✓ Saved. Testing connection...")
+    result = llm.llm_complete("Say 'hello' and nothing else.")
+    if result:
+        print(f"  ✓✓✓ SUCCESS! Groq responded: {result[:60]}")
         print()
-        if not llm.llm_available():
-            print("  ✗ No API key set. Set one first (option 1).")
-        else:
-            print("  Testing connection...")
-            result = llm.llm_complete("Say 'hello' and nothing else.")
-            if result:
-                print(f"  ✓ Connection works! Z.ai responded: {result[:50]}")
-            else:
-                print("  ✗ Connection failed. Check your API key.")
+        print("  You're all set. AI-assisted tagging and analysis now work.")
+    else:
+        print()
+        print("  ✗ Connection failed. Check the key was copied correctly.")
+    pause()
+
+
+def _setup_ollama():
+    """Set up Ollama (local, completely free)."""
+    print_header()
+    print("  OLLAMA SETUP (LOCAL, COMPLETELY FREE)")
+    print("  " + "-" * 52)
+    print()
+    print("  Ollama runs an AI model on YOUR machine.")
+    print("  Pros: completely free, no limits, your text never leaves your computer.")
+    print("  Cons: you need to install it and download a model (~2GB).")
+    print()
+    print("  ────────────────────────────────────────────────")
+    print("  HOW TO SET UP OLLAMA:")
+    print("  ────────────────────────────────────────────────")
+    print()
+    print("    1. Go to https://ollama.com")
+    print()
+    print("    2. Download Ollama for your system (Windows/Mac/Linux)")
+    print()
+    print("    3. Install it (double-click the downloaded file)")
+    print()
+    print("    4. Open a terminal/command prompt and run:")
+    print("         ollama pull llama3.2")
+    print("       (This downloads the model — about 2GB, takes a few minutes)")
+    print()
+    print("    5. Ollama runs in the background. No API key needed!")
+    print()
+    print("    6. Select Ollama below and you're done.")
+    print()
+    print("  ────────────────────────────────────────────────")
+    print()
+
+    confirm = input("  Have you installed Ollama and pulled llama3.2? (y/n): ").strip().lower()
+    if confirm != "y":
+        print()
+        print("  Install Ollama first, then come back.")
+        print("  URL: https://ollama.com")
         pause()
+        return
+
+    settings.set_setting("provider", "ollama")
+    settings.set_setting("api_key", "")  # Ollama doesn't need a key
+    settings.set_setting("model", "llama3.2")
+
+    print()
+    print("  ✓ Saved. Testing connection (make sure Ollama is running)...")
+    result = llm.llm_complete("Say 'hello' and nothing else.")
+    if result:
+        print(f"  ✓✓✓ SUCCESS! Ollama responded: {result[:60]}")
+        print()
+        print("  You're all set. AI runs locally on your machine.")
+    else:
+        print()
+        print("  ✗ Connection failed. Make sure:")
+        print("    • Ollama is installed (https://ollama.com)")
+        print("    • You ran 'ollama pull llama3.2'")
+        print("    • Ollama is running (it usually auto-starts)")
+        print("    • Try running 'ollama serve' in a terminal")
+    pause()
+
+
+def _setup_zai():
+    """Set up Z.ai (requires credits)."""
+    print_header()
+    print("  Z.AI SETUP (REQUIRES CREDITS)")
+    print("  " + "-" * 52)
+    print()
+    print("  ⚠  Z.ai requires payment/credits. The free tier is limited.")
+    print("  Consider Gemini (option 1) or Groq (option 2) instead — both free.")
+    print()
+    print("  ────────────────────────────────────────────────")
+    print()
+
+    api_key = input("  Paste your Z.ai API key (or press Enter to cancel): ").strip()
+    if not api_key:
+        print("\n  No key entered. Nothing changed.")
+        pause()
+        return
+
+    settings.set_setting("provider", "zai")
+    settings.set_setting("api_key", api_key)
+    settings.set_setting("model", "glm-4-plus")
+
+    print()
+    print("  ✓ Saved. Testing connection...")
+    result = llm.llm_complete("Say 'hello' and nothing else.")
+    if result:
+        print(f"  ✓✓✓ SUCCESS! Z.ai responded: {result[:60]}")
+    else:
+        print()
+        print("  ✗ Connection failed. Z.ai requires credits.")
+        print("  Try Gemini (option 1) or Groq (option 2) — both are free.")
+    pause()
+
+
+def _test_connection():
+    """Test the current AI connection."""
+    print()
+    print("  Testing connection...")
+    print(f"  Provider: {settings.get_provider()}")
+    print(f"  Model: {settings.get_model()}")
+    print()
+
+    if not llm.llm_available():
+        print("  ✗ No AI configured.")
+        print("  Pick a provider (1-4) and set it up first.")
+        pause()
+        return
+
+    result = llm.llm_complete("Say 'hello' and nothing else.")
+    if result:
+        print(f"  ✓✓✓ SUCCESS! AI responded: {result[:80]}")
+    else:
+        print()
+        print("  ✗ Connection failed.")
+        print()
+        print("  Troubleshooting:")
+        print("    • Check the API key is correct (no extra spaces)")
+        print("    • Make sure you have credits (Z.ai) or are within free limits (Gemini/Groq)")
+        print("    • For Ollama, make sure it's running: 'ollama serve'")
+    pause()
 
 
 def main():
