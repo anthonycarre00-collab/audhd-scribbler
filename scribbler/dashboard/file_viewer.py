@@ -6,6 +6,7 @@ Opens in the browser, shows every file with its tags, summary, and a link to ope
 """
 import json
 import os
+import sys
 import webbrowser
 from pathlib import Path
 from datetime import datetime
@@ -17,7 +18,12 @@ from ..file_io import read_text_file
 
 
 def generate() -> str:
-    """Generate the file viewer HTML and return the file path."""
+    """Generate the file viewer HTML AND all individual reader pages.
+
+    This generates BOTH files.html (the index) AND read_<filename>.html for
+    every tagged file. That way the 'Read this file' links work from the
+    dashboard view.
+    """
     from .generator import CSS_BASE
 
     output_dir = DATA_DIR / "dashboard"
@@ -25,9 +31,21 @@ def generate() -> str:
 
     all_files = db.get_all_files()
 
+    # Generate the index page
     html = _build_html(all_files, CSS_BASE)
     output_path = output_dir / "files.html"
     output_path.write_text(html, encoding="utf-8")
+
+    # Generate a reader page for each file (so the 'Read this file' links work)
+    for f in all_files:
+        file_path = f.get("path")
+        if file_path:
+            try:
+                generate_single_file_reader(file_path)
+            except Exception as e:
+                # Don't let one bad file break the whole viewer
+                print(f"  [Warning] Could not generate reader for {f.get('filename', '')}: {e}", file=sys.stderr)
+
     return str(output_path)
 
 

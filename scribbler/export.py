@@ -60,6 +60,30 @@ def export_plain_text(file_path: str, output_path: str = None) -> str:
     return str(out_path)
 
 
+def _sanitize_for_docx(text: str) -> str:
+    """Remove control characters that python-docx rejects.
+
+    XML 1.0 only allows: tab (0x09), newline (0x0A), carriage return (0x0D),
+    and characters >= 0x20. Everything else must be removed or replaced.
+    """
+    import re
+    # Remove NULL bytes and other control characters (except tab, newline, CR)
+    # Replace them with a space to preserve word boundaries
+    cleaned = []
+    for char in text:
+        code = ord(char)
+        if code == 0:
+            continue  # Skip NULL bytes entirely
+        elif code < 32 and code not in (9, 10, 13):
+            cleaned.append(' ')  # Replace other control chars with space
+        else:
+            cleaned.append(char)
+    text = ''.join(cleaned)
+    # Collapse multiple spaces
+    text = re.sub(r' {3,}', '  ', text)
+    return text
+
+
 def export_docx(file_path: str, output_path: str = None) -> str:
     """Export a file as a Word document."""
     try:
@@ -86,6 +110,9 @@ def export_docx(file_path: str, output_path: str = None) -> str:
     # Strip summary comments
     body_text = re.sub(r'<!-- SCRIBBLER SUMMARY[\s\S]*?-->', '', body_text).strip()
 
+    # Sanitize: remove control characters that python-docx rejects
+    body_text = _sanitize_for_docx(body_text)
+
     if output_path is None:
         output_path = str(PROJECT_ROOT / "data" / "exports" / f"{path.stem}.docx")
 
@@ -102,6 +129,7 @@ def export_docx(file_path: str, output_path: str = None) -> str:
 
     # Add title (filename without extension)
     title = path.stem.replace('-', ' ').replace('_', ' ').title()
+    title = _sanitize_for_docx(title)
     heading = doc.add_heading(title, level=1)
 
     # Split into paragraphs and add
@@ -112,14 +140,14 @@ def export_docx(file_path: str, output_path: str = None) -> str:
             continue
         # Check if it's a heading (starts with #)
         if para.startswith('# '):
-            doc.add_heading(para[2:], level=1)
+            doc.add_heading(_sanitize_for_docx(para[2:]), level=1)
         elif para.startswith('## '):
-            doc.add_heading(para[3:], level=2)
+            doc.add_heading(_sanitize_for_docx(para[3:]), level=2)
         elif para.startswith('### '):
-            doc.add_heading(para[4:], level=3)
+            doc.add_heading(_sanitize_for_docx(para[4:]), level=3)
         else:
             # Regular paragraph
-            p = doc.add_paragraph(para)
+            p = doc.add_paragraph(_sanitize_for_docx(para))
 
     doc.save(str(out_path))
     return str(out_path)
