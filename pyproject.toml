@@ -1,0 +1,21 @@
+[build-system]
+requires = ["setuptools>=61.0"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "audhd-scribbler"
+version = "1.0.0"
+description = "A writer's tool suite for an AUDHD brain — organise, label, and analyse a memoir"
+requires-python = ">=3.8"
+dependencies = [
+    "click>=8.1.0",
+    "rich>=13.0.0",
+    "spacy>=3.6.0",
+    "python-docx>=1.0.0",
+]
+
+[project.scripts]
+scribbler = "scribbler.cli:main"
+
+[tool.setuptools.packages.find]
+include = ["scribbler*"]

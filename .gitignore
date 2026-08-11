@@ -1,0 +1,54 @@
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+.venv/
+venv/
+env/
+*.egg-info/
+dist/
+build/
+
+# Data (private — your writing)
+data/
+*.db
+*.db-journal
+*.db-wal
+*.db-shm
+
+# OS
+.DS_Store
+Thumbs.db
+*.swp
+*.swo
+
+# Editor
+.vscode/
+.idea/
+*.sublime-*
+
+# Keep folder structure but ignore contents
+raw-dumps/*
+triage/*
+chapters/*
+characters/*
+places/*
+themes/*
+research/*
+comps/*
+drafts/*
+final/*
+archive/*
+!raw-dumps/README.md
+!triage/README.md
+!chapters/README.md
+!characters/README.md
+!places/README.md
+!themes/README.md
+!research/README.md
+!comps/README.md
+!drafts/README.md
+!final/README.md
+!archive/README.md
