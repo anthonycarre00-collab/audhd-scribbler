@@ -3,6 +3,7 @@ name: Windows package
 on:
   workflow_dispatch:
   push:
+    branches: [ux-redesign]
     tags:
       - 'v*'
 
