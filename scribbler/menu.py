@@ -43,27 +43,29 @@ def print_menu():
     print()
     print("  ── WRITING ──────────────────────────────────")
     print("    1.  Tag all my dumps  (organize raw text files)")
-    print("    2.  View my files  (see all tagged files with metadata)")
-    print("    3.  What should I do next?  (3 suggested actions)")
-    print("    4.  Open the raw-dumps folder  (drop new files here)")
+    print("    2.  View my files  (browse all files with metadata)")
+    print("    3.  Read a file  (see the actual writing)")
+    print("    4.  What should I do next?  (3 suggested actions)")
+    print("    5.  Open the raw-dumps folder  (drop new files here)")
     print()
     print("  ── ANALYSIS ─────────────────────────────────")
-    print("    5.  Analyze a chapter  (run the full analysis suite)")
-    print("    6.  Analyze ALL chapters  (batch analysis)")
-    print("    7.  Market research  (find comparable titles)")
-    print("    8.  Find links between files  (what connects to what)")
+    print("    6.  Analyze a chapter  (run the full analysis suite)")
+    print("    7.  Analyze ALL chapters  (batch analysis)")
+    print("    8.  Market research  (find comparable titles)")
+    print("    9.  Find links between files  (what connects to what)")
     print()
     print("  ── VIEW ─────────────────────────────────────")
-    print("    9.  Open the dashboard  (visual overview)")
-    print("    10. Show project stats  (word count, file count)")
+    print("    10. Open the dashboard  (visual overview)")
+    print("    11. Show project stats  (word count, file count)")
     print()
-    print("  ── EXPORT ───────────────────────────────────")
-    print("    11. Export a file  (to Word, markdown, or plain text)")
-    print("    12. Export all tagged files  (batch export)")
+    print("  ── EXPORT & MANAGE ──────────────────────────")
+    print("    12. Export a file  (to Word, markdown, or plain text)")
+    print("    13. Export all tagged files  (batch export)")
+    print("    14. Delete a file  (remove from project)")
     print()
     print("  ── SETTINGS ─────────────────────────────────")
-    print("    13. Settings  (Z.ai API key, theme, etc.)")
-    print("    14. Quit")
+    print("    15. Settings  (Z.ai API key, theme, etc.)")
+    print("    16. Quit")
     print()
 
 
@@ -71,7 +73,7 @@ def get_choice(prompt="  Pick a number: "):
     try:
         return input(prompt).strip()
     except (EOFError, KeyboardInterrupt):
-        return "14"
+        return "16"
 
 
 def pause():
@@ -88,14 +90,23 @@ def run_cli(*args):
     subprocess.run(cmd, cwd=str(PROJECT_ROOT))
 
 
-def find_text_files():
-    """Find all text files in the writing folders."""
+def find_text_files(include_readme: bool = False):
+    """Find all text files in the writing folders.
+
+    Args:
+        include_readme: If False (default), skip README.md files — they're folder descriptions, not writing.
+    """
     files = []
     for folder in ["raw-dumps", "triage", "chapters", "drafts", "final"]:
         folder_path = PROJECT_ROOT / folder
         if folder_path.exists():
             for ext in ["*.txt", "*.md"]:
-                files.extend(folder_path.glob(ext))
+                for f in folder_path.glob(ext):
+                    if not include_readme and f.name.upper() == "README.MD":
+                        continue
+                    files.append(f)
+    # Sort by folder then name for predictable ordering
+    files.sort(key=lambda f: (str(f.parent), f.name))
     return files
 
 
@@ -115,7 +126,18 @@ def pick_file(prompt="  Pick a file:"):
         rel = f.relative_to(PROJECT_ROOT)
         size = f.stat().st_size
         size_str = f"{size//1024}KB" if size >= 1024 else f"{size}B"
-        print(f"    {i:2d}. {rel}  ({size_str})")
+
+        # Try to get word count and status from DB
+        from scribbler import db
+        db_entry = db.get_file(str(f.resolve()))
+        if db_entry:
+            word_count = db_entry.get("word_count", 0)
+            status = db_entry.get("status", "")
+            extra = f"  ·  {word_count} words  ·  {status}" if status else f"  ·  {word_count} words"
+        else:
+            extra = ""
+
+        print(f"    {i:2d}. {rel}  ({size_str}){extra}")
     print()
 
     choice = get_choice("  Number: ")
@@ -200,7 +222,100 @@ def action_view_files():
     print("    • Word count, era, voice, emotional register")
     print("    • Characters, places, themes, sensory details")
     print("    • AI-generated summary")
+    print("    • Full text content of the file")
     print("    • File path (so you can open it in your editor)")
+    pause()
+
+
+def action_read_file():
+    """Show the actual writing content of a file."""
+    print_header()
+    print("  READ A FILE")
+    print("  " + "-" * 52)
+    print()
+    print("  Pick a file to read. The full text will open in your browser")
+    print("  with the metadata at the top.")
+    print()
+
+    file_path = pick_file("  Which file do you want to read?")
+    if not file_path:
+        pause()
+        return
+
+    # Generate a single-file reader HTML and open it
+    from scribbler.dashboard.file_viewer import generate_single_file_reader
+    html_path = generate_single_file_reader(file_path)
+
+    print()
+    print(f"  ✓ Opening: {os.path.basename(file_path)}")
+    webbrowser.open(f"file://{os.path.abspath(html_path)}")
+    pause()
+
+
+def action_delete_file():
+    """Delete a file from the project."""
+    print_header()
+    print("  DELETE A FILE")
+    print("  " + "-" * 52)
+    print()
+    print("  Pick a file to delete. The file will be moved to the")
+    print("  'archive' folder (not permanently deleted — you can")
+    print("  recover it from there if needed).")
+    print()
+
+    file_path = pick_file("  Which file do you want to delete?")
+    if not file_path:
+        pause()
+        return
+
+    path = Path(file_path)
+    if not path.exists():
+        print(f"\n  File not found: {path}")
+        pause()
+        return
+
+    # Confirm
+    print()
+    print(f"  You want to delete: {path.name}")
+    print(f"  Location: {path.parent}")
+    print()
+    confirm = input("  Type 'yes' to confirm (anything else cancels): ").strip().lower()
+
+    if confirm != "yes":
+        print("\n  Cancelled. File not deleted.")
+        pause()
+        return
+
+    # Move to archive
+    archive_dir = PROJECT_ROOT / "archive"
+    archive_dir.mkdir(exist_ok=True)
+
+    # Handle name collisions
+    dest = archive_dir / path.name
+    counter = 1
+    while dest.exists():
+        dest = archive_dir / f"{path.stem}_{counter}{path.suffix}"
+        counter += 1
+
+    try:
+        path.rename(dest)
+        print(f"\n  ✓ Moved to: archive/{dest.name}")
+        print(f"  (Recoverable from the archive folder)")
+
+        # Remove from database
+        from scribbler import db
+        conn = db.get_db()
+        conn.execute("DELETE FROM files WHERE path = ?", (str(path.resolve()),))
+        conn.execute("DELETE FROM analysis_results WHERE file_path = ?", (str(path.resolve()),))
+        conn.execute(
+            "INSERT INTO activity_log (timestamp, action, file_path, details) VALUES (?, ?, ?, ?)",
+            (datetime.now().isoformat(), "delete", str(path.resolve()), f"Moved to archive/{dest.name}")
+        )
+        conn.commit()
+        conn.close()
+        print(f"  ✓ Removed from project database")
+    except Exception as e:
+        print(f"\n  Error: {e}")
     pause()
 
 
@@ -886,28 +1001,32 @@ def main():
         elif choice == "2":
             action_view_files()
         elif choice == "3":
-            action_next()
+            action_read_file()
         elif choice == "4":
-            action_open_folder()
+            action_next()
         elif choice == "5":
-            action_analyze()
+            action_open_folder()
         elif choice == "6":
-            action_analyze_all()
+            action_analyze()
         elif choice == "7":
-            action_market()
+            action_analyze_all()
         elif choice == "8":
-            action_links()
+            action_market()
         elif choice == "9":
-            action_dashboard()
+            action_links()
         elif choice == "10":
-            action_stats()
+            action_dashboard()
         elif choice == "11":
-            action_export()
+            action_stats()
         elif choice == "12":
-            action_export_all()
+            action_export()
         elif choice == "13":
-            action_settings()
+            action_export_all()
         elif choice == "14":
+            action_delete_file()
+        elif choice == "15":
+            action_settings()
+        elif choice == "16":
             print_header()
             print("  Happy scribbling.")
             print()
@@ -916,7 +1035,7 @@ def main():
             print()
             break
         else:
-            print("\n  Pick a number from 1 to 14.")
+            print("\n  Pick a number from 1 to 16.")
             pause()
 
 

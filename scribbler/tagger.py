@@ -78,8 +78,34 @@ def detect_characters(text: str, nlp=None) -> List[str]:
 
 
 def detect_places(text: str, nlp=None) -> List[str]:
-    """Detect place names. Uses spaCy NER if available."""
+    """Detect place names. Uses spaCy NER if available.
+
+    Filters false positives:
+    - Requires country/city names to appear with location prepositions (in/at/to/from/near)
+      OR appear multiple times (suggesting it's a real setting)
+    - Filters out common words that spaCy misclassifies as places
+    """
     places = set()
+    place_counts = {}  # Track how many times each place appears
+
+    # Common false positives — words spaCy sometimes misclassifies as GPE/LOC
+    FALSE_POSITIVES = {
+        'australia', 'america', 'europe', 'asia', 'africa', 'england',
+        'france', 'germany', 'italy', 'spain', 'china', 'japan', 'india',
+        'canada', 'mexico', 'brazil', 'russia', 'london', 'paris', 'tokyo',
+        'new york', 'los angeles', 'chicago', 'boston', 'seattle',
+    }  # These are only kept if they appear with location prepositions
+
+    # Words that should never be tagged as places
+    NEVER_PLACES = {
+        'one', 'two', 'three', 'first', 'second', 'third',
+        'monday', 'tuesday', 'wednesday', 'thursday', 'friday', 'saturday', 'sunday',
+        'january', 'february', 'march', 'april', 'may', 'june', 'july',
+        'august', 'september', 'october', 'november', 'december',
+        'spring', 'summer', 'autumn', 'winter', 'fall',
+        'morning', 'afternoon', 'evening', 'night', 'today', 'tomorrow', 'yesterday',
+        'school', 'work', 'home', 'church', 'hospital', 'office',
+    }
 
     if nlp is None:
         nlp = _get_spacy()
@@ -88,8 +114,36 @@ def detect_places(text: str, nlp=None) -> List[str]:
         for ent in doc.ents:
             if ent.label_ in ("GPE", "LOC", "FAC", "ORG"):
                 name = ent.text.strip()
-                if len(name) > 1:
-                    places.add(name)
+                name_lower = name.lower()
+
+                # Skip if it's a common false positive
+                if name_lower in NEVER_PLACES:
+                    continue
+
+                # Skip if name is too short or just a number
+                if len(name) < 2 or name.isdigit():
+                    continue
+
+                # For country/city names, require setting context
+                # A "setting" means the place is where something happened (lived, grew up, visited, went to school)
+                # NOT just mentioned (e.g., "I'd rather go to Australia" is a mention, not a setting)
+                if name_lower in FALSE_POSITIVES:
+                    # Look for setting-establishing verbs
+                    setting_pattern = r'\b(?:lived|live|grew up|born|raised|stayed|visit|visited|moved|move|went to school|school|work|working|grew|born in|raised in)\s+(?:in\s+)?' + re.escape(name) + r'\b'
+                    # Or the place appears with "in <name>" + a setting verb elsewhere
+                    in_pattern = r'\bin\s+' + re.escape(name) + r'\b'
+                    has_setting = bool(re.search(setting_pattern, text, re.IGNORECASE))
+                    has_in = bool(re.search(in_pattern, text, re.IGNORECASE))
+
+                    # Also check if it appears 3+ times (suggesting it's a real recurring setting)
+                    count = len(re.findall(r'\b' + re.escape(name) + r'\b', text, re.IGNORECASE))
+
+                    if not has_setting and (not has_in or count < 3) and count < 3:
+                        continue  # Skip this — it's just a mention, not a setting
+
+                # Count occurrences
+                place_counts[name] = place_counts.get(name, 0) + 1
+                places.add(name)
     else:
         # Fallback: look for "in/at/to the [Place]" patterns
         patterns = [
@@ -98,10 +152,10 @@ def detect_places(text: str, nlp=None) -> List[str]:
         for pattern in patterns:
             matches = re.findall(pattern, text)
             for m in matches:
-                if m.lower() not in ['the', 'a', 'an', 'morning', 'afternoon', 'evening', 'night', 'kitchen', 'bedroom', 'bathroom', 'living', 'dining']:
+                if m.lower() not in NEVER_PLACES and m.lower() not in ['the', 'a', 'an']:
                     places.add(m)
 
-    # Common domestic places
+    # Common domestic places (always include — these are reliable)
     domestic = re.findall(r'\b(kitchen|bedroom|bathroom|living room|garden|yard|garage|basement|attic|hallway|porch|driveway)\b', text, re.IGNORECASE)
     for d in domestic:
         places.add(d.lower())
