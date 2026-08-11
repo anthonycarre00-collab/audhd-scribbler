@@ -447,56 +447,167 @@ def action_settings():
         print()
 
         current = settings.load_settings()
-        provider_id = current.get("provider", "gemini")
+        provider_id = current.get("provider", "zai_cli")
         provider_config = settings.get_provider_config(provider_id)
 
         # Show current status
         print("  Current AI provider:")
         print(f"    {provider_config.get('name', provider_id)}")
-        if provider_id == "ollama":
-            print(f"    Status: {llm.llm_status()}")
-        else:
-            key_set = bool(current.get("api_key", ""))
-            if key_set:
-                key_preview = current.get("api_key", "")[:8] + "..."
-                print(f"    API key: ✓ Set ({key_preview})")
-            else:
-                print(f"    API key: ✗ Not set")
-            print(f"    Status: {llm.llm_status()}")
+        print(f"    Status: {llm.llm_status()}")
         print()
         print("  ────────────────────────────────────────────────")
         print()
-        print("  Pick an AI provider (all work, pick whichever you prefer):")
+        print("  Pick an AI provider:")
         print()
-        print("    1.  Google Gemini  (FREE — recommended, easy to get)")
-        print("    2.  Groq           (FREE — very fast, llama models)")
-        print("    3.  Ollama         (LOCAL — completely free, runs on your machine)")
-        print("    4.  Z.ai           (requires credits — the one that failed)")
+        print("    1.  Z.ai CLI  (FREE — the AI you're chatting with, NO API KEY needed)")
+        print("    2.  Google Gemini  (FREE — needs API key)")
+        print("    3.  Groq           (FREE — very fast, needs API key)")
+        print("    4.  Ollama         (LOCAL — completely free, runs on your machine)")
+        print("    5.  Z.ai API       (requires credits — NOT recommended)")
         print()
-        print("    5.  Test current connection")
-        print("    6.  Clear API key")
-        print("    7.  Back to menu")
+        print("    6.  Test current connection")
+        print("    7.  Clear API key")
+        print("    8.  Back to menu")
         print()
 
         choice = get_choice("  Pick a number: ")
 
         if choice == "1":
-            _setup_gemini()
+            _setup_zai_cli()
         elif choice == "2":
-            _setup_groq()
+            _setup_gemini()
         elif choice == "3":
-            _setup_ollama()
+            _setup_groq()
         elif choice == "4":
-            _setup_zai()
+            _setup_ollama()
         elif choice == "5":
-            _test_connection()
+            _setup_zai()
         elif choice == "6":
+            _test_connection()
+        elif choice == "7":
             settings.set_setting("api_key", "")
             print()
             print("  ✓ API key cleared.")
             pause()
-        elif choice == "7":
+        elif choice == "8":
             break
+
+
+def _setup_zai_cli():
+    """Set up the Z.ai CLI — free, no API key needed."""
+    print_header()
+    print("  Z.AI CLI SETUP (FREE — NO API KEY NEEDED)")
+    print("  " + "-" * 52)
+    print()
+    print("  This uses the same AI you're chatting with right now.")
+    print("  No API key. No credits. No payment. Ever.")
+    print()
+    print("  ────────────────────────────────────────────────")
+    print()
+
+    # Check if z-ai is already installed
+    import shutil
+    if shutil.which("z-ai"):
+        print("  ✓ Z.ai CLI is already installed!")
+        settings.set_setting("provider", "zai_cli")
+        settings.set_setting("api_key", "")
+        print()
+        print("  Testing connection...")
+        result = llm.llm_complete("Say 'hello' and nothing else.")
+        if result:
+            print(f"  ✓✓✓ SUCCESS! Z.ai responded: {result[:60]}")
+            print()
+            print("  You're all set. AI-assisted tagging and analysis now work.")
+        else:
+            print("  ⚠ Connection test failed, but the CLI is installed.")
+            print("  Try tagging a file — it may still work.")
+        pause()
+        return
+
+    # Need to install it
+    print("  The Z.ai CLI is not installed yet. Let's install it.")
+    print()
+    print("  ────────────────────────────────────────────────")
+    print("  STEP 1: Check if Node.js is installed")
+    print("  ────────────────────────────────────────────────")
+    print()
+
+    # Check for node
+    node_installed = shutil.which("node") is not None or shutil.which("npm") is not None
+
+    if node_installed:
+        print("  ✓ Node.js is installed. Good.")
+    else:
+        print("  ✗ Node.js is not installed.")
+        print()
+        print("  Node.js is required to run the Z.ai CLI.")
+        print("  It's free and easy to install:")
+        print()
+        print("    1. Go to https://nodejs.org")
+        print("    2. Download the 'LTS' version (left button)")
+        print("    3. Run the installer (just click Next, Next, Finish)")
+        print("    4. Come back here and run this option again")
+        print()
+        print("  ────────────────────────────────────────────────")
+        print()
+        pause()
+        return
+
+    print()
+    print("  ────────────────────────────────────────────────")
+    print("  STEP 2: Install the Z.ai CLI")
+    print("  ────────────────────────────────────────────────")
+    print()
+    print("  This runs: npm install -g z-ai-web-dev-sdk")
+    print("  (One-time install, takes about 30 seconds)")
+    print()
+    input("  Press Enter to install...")
+
+    import subprocess
+    print()
+    print("  Installing... (this may take a minute)")
+    try:
+        result = subprocess.run(
+            ["npm", "install", "-g", "z-ai-web-dev-sdk"],
+            capture_output=True, text=True, timeout=120
+        )
+        if result.returncode == 0:
+            print("  ✓ Installation complete!")
+        else:
+            print(f"  ⚠ Installation may have had issues.")
+            print(f"  Output: {result.stderr[:200]}")
+    except subprocess.TimeoutExpired:
+        print("  ⚠ Installation timed out. Try running manually:")
+        print("    npm install -g z-ai-web-dev-sdk")
+    except Exception as e:
+        print(f"  ⚠ Error: {e}")
+        print("  Try running manually: npm install -g z-ai-web-dev-sdk")
+
+    # Check if it worked
+    if shutil.which("z-ai"):
+        settings.set_setting("provider", "zai_cli")
+        settings.set_setting("api_key", "")
+        print()
+        print("  ✓ Z.ai CLI is now available!")
+        print()
+        print("  Testing connection...")
+        result = llm.llm_complete("Say 'hello' and nothing else.")
+        if result:
+            print(f"  ✓✓✓ SUCCESS! Z.ai responded: {result[:60]}")
+            print()
+            print("  You're all set. AI-assisted tagging and analysis now work.")
+        else:
+            print("  ⚠ Connection test failed. The CLI is installed though.")
+            print("  Try restarting this menu and running a tag.")
+    else:
+        print()
+        print("  ⚠ The CLI doesn't seem to be in PATH yet.")
+        print("  You may need to:")
+        print("    1. Close this window")
+        print("    2. Re-open it (so PATH refreshes)")
+        print("    3. Come back to Settings and pick option 1 again")
+
+    pause()
 
 
 def _setup_gemini():

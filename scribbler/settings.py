@@ -13,11 +13,19 @@ from .config import PROJECT_ROOT
 
 SETTINGS_PATH = PROJECT_ROOT / "settings.json"
 
-# Multi-provider support — pick whichever you have a key for
-# Gemini and Groq are FREE. Ollama is local (completely free, runs on your machine).
+# Multi-provider support — pick whichever you have access to
+# z-ai CLI is the recommended option: same AI you're chatting with, no API key needed
 PROVIDERS = {
+    "zai_cli": {
+        "name": "Z.ai CLI (FREE — the AI you're chatting with, no API key needed)",
+        "base_url": "",  # Uses the z-ai CLI, not the API
+        "model": "glm-4-plus",
+        "free": True,
+        "get_key_url": "https://nodejs.org",
+        "get_key_instructions": "The z-ai CLI uses the same AI you're chatting with right now.\nNo API key needed. No credits. No payment.\n\nTo install:\n1. Install Node.js from https://nodejs.org (if you don't have it)\n2. The installer will automatically run: npm install -g z-ai-web-dev-sdk\n3. That's it. The tool will use z-ai automatically.",
+    },
     "gemini": {
-        "name": "Google Gemini (FREE — recommended)",
+        "name": "Google Gemini (FREE — needs API key)",
         "base_url": "https://generativelanguage.googleapis.com/v1beta/openai/",
         "model": "gemini-2.0-flash",
         "free": True,
@@ -25,7 +33,7 @@ PROVIDERS = {
         "get_key_instructions": "1. Go to https://aistudio.google.com/app/apikey\n2. Sign in with Google\n3. Click 'Create API key'\n4. Copy the key (starts with 'AIza...')\n5. Paste it below\n\nNo credit card needed. Free tier: 15 requests/min, 1500/day.",
     },
     "groq": {
-        "name": "Groq (FREE — very fast)",
+        "name": "Groq (FREE — very fast, needs API key)",
         "base_url": "https://api.groq.com/openai/v1",
         "model": "llama-3.3-70b-versatile",
         "free": True,
@@ -41,17 +49,17 @@ PROVIDERS = {
         "get_key_instructions": "1. Download Ollama from https://ollama.com\n2. Install it\n3. Open a terminal and run: ollama pull llama3.2\n4. Ollama runs locally — no API key needed!\n5. Just select Ollama as your provider below\n\nYour text never leaves your machine. Completely free, no limits.",
     },
     "zai": {
-        "name": "Z.ai (GLM-4-Plus — requires credits)",
+        "name": "Z.ai API (requires credits — NOT recommended)",
         "base_url": "https://api.z.ai/api/paas/v4",
         "model": "glm-4-plus",
         "free": False,
         "get_key_url": "https://z.ai",
-        "get_key_instructions": "1. Go to https://z.ai\n2. Sign up and add credits\n3. Get an API key\n4. Paste it below\n\nNOTE: Z.ai requires payment. Consider Gemini or Groq instead (both free).",
+        "get_key_instructions": "1. Go to https://z.ai\n2. Sign up and add credits\n3. Get an API key\n4. Paste it below\n\nNOTE: Z.ai API requires payment. Use the Z.ai CLI option instead — it's free.",
     },
 }
 
 DEFAULT_SETTINGS = {
-    "provider": "gemini",  # Default to free Gemini
+    "provider": "zai_cli",  # Default to z-ai CLI (free, no key needed)
     "api_key": "",
     "model": "",  # Empty = use provider default
     "git_auto_commit": False,
@@ -111,10 +119,10 @@ def get_provider_config(provider_id: str = None) -> Dict:
 
 
 def has_api_key() -> bool:
-    """Check if an API key is configured (not needed for Ollama)."""
+    """Check if an API key is configured (not needed for Ollama or z-ai CLI)."""
     provider = get_provider()
-    if provider == "ollama":
-        return True  # Ollama doesn't need a key
+    if provider in ("ollama", "zai_cli"):
+        return True  # These don't need an API key
     key = get_setting("api_key", "")
     return bool(key and len(key) > 10)
 

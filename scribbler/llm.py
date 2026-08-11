@@ -63,7 +63,7 @@ def _try_openai_package(prompt: str, system: str = None) -> Optional[str]:
 
 
 def _try_zai_cli(prompt: str, system: str = None) -> Optional[str]:
-    """Fallback: try z-ai CLI via subprocess (works in some environments)."""
+    """Use the z-ai CLI (free, no API key needed)."""
     if not shutil.which("z-ai"):
         return None
     try:
@@ -73,21 +73,59 @@ def _try_zai_cli(prompt: str, system: str = None) -> Optional[str]:
         result = subprocess.run(cmd, capture_output=True, text=True, timeout=90)
         if result.returncode != 0:
             return None
+
         output = result.stdout.strip()
-        try:
-            data = json.loads(output)
-            return data.get("choices", [{}])[0].get("message", {}).get("content", "").strip()
-        except json.JSONDecodeError:
-            for line in output.split("\n"):
-                line = line.strip()
-                if line.startswith("{"):
-                    try:
-                        data = json.loads(line)
-                        return data.get("choices", [{}])[0].get("message", {}).get("content", "").strip()
-                    except json.JSONDecodeError:
-                        continue
+
+        # The z-ai CLI outputs status lines (🚀, ✅) followed by a JSON block
+        # Strategy: find the first '{' and try to parse from there to the matching '}'
+        json_start = output.find('{')
+        if json_start == -1:
+            # No JSON found, return cleaned text
             lines = [l for l in output.split("\n") if not l.startswith("🚀") and not l.startswith("✅")]
             return "\n".join(lines).strip() or None
+
+        # Try to parse the JSON starting from json_start
+        # The JSON might be multi-line, so we need to find the matching closing brace
+        json_text = output[json_start:]
+        try:
+            data = json.loads(json_text)
+            return data.get("choices", [{}])[0].get("message", {}).get("content", "").strip()
+        except json.JSONDecodeError:
+            # The JSON might have trailing text. Try to find the matching brace
+            depth = 0
+            in_string = False
+            escape_next = False
+            end_pos = 0
+            for i, char in enumerate(json_text):
+                if escape_next:
+                    escape_next = False
+                    continue
+                if char == '\\':
+                    escape_next = True
+                    continue
+                if char == '"':
+                    in_string = not in_string
+                    continue
+                if in_string:
+                    continue
+                if char == '{':
+                    depth += 1
+                elif char == '}':
+                    depth -= 1
+                    if depth == 0:
+                        end_pos = i + 1
+                        break
+            if end_pos > 0:
+                try:
+                    data = json.loads(json_text[:end_pos])
+                    return data.get("choices", [{}])[0].get("message", {}).get("content", "").strip()
+                except json.JSONDecodeError:
+                    pass
+
+            # Last resort: return cleaned text
+            lines = [l for l in output.split("\n") if not l.startswith("🚀") and not l.startswith("✅")]
+            return "\n".join(lines).strip() or None
+
     except Exception:
         return None
 
@@ -96,18 +134,29 @@ def llm_complete(prompt: str, system: str = None, max_retries: int = 2) -> Optio
     """Call the LLM. Returns None if all methods fail.
 
     Priority:
-    1. Configured provider via openai package (Gemini, Groq, Ollama, Z.ai)
-    2. z-ai CLI fallback (if installed in this environment)
+    1. If provider is 'zai_cli': use the z-ai CLI (free, no key needed)
+    2. If provider is 'ollama': use openai package with local endpoint
+    3. Otherwise: use openai package with configured API key
+    4. Fallback: z-ai CLI if available
     """
-    # Try configured provider first
+    provider = settings.get_provider()
+
+    # z-ai CLI provider: uses the CLI directly (no API key, no credits)
+    if provider == "zai_cli":
+        for attempt in range(max_retries):
+            result = _try_zai_cli(prompt, system)
+            if result and len(result) > 5:
+                return result
+        return None
+
+    # Other providers: use openai package
     if settings.has_api_key():
         for attempt in range(max_retries):
             result = _try_openai_package(prompt, system)
             if result and len(result) > 5:
                 return result
-        # Don't fall through to CLI if user explicitly configured a provider
 
-    # Fallback to z-ai CLI (only in environments where it's available)
+    # Last-resort fallback: z-ai CLI if installed
     result = _try_zai_cli(prompt, system)
     if result and len(result) > 5:
         return result
@@ -126,7 +175,12 @@ def llm_status() -> str:
     config = settings.get_provider_config(provider)
     provider_name = config.get("name", provider)
 
-    if provider == "ollama":
+    if provider == "zai_cli":
+        if shutil.which("z-ai"):
+            return f"Connected via Z.ai CLI (free, no API key needed)"
+        else:
+            return f"Z.ai CLI selected but not installed. Run: npm install -g z-ai-web-dev-sdk"
+    elif provider == "ollama":
         # Check if Ollama is running
         try:
             import urllib.request
