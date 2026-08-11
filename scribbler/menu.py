@@ -236,6 +236,7 @@ def action_dashboard():
 def action_next():
     print_header()
     run_cli("next")
+    pause()
 
 
 def action_analyze():
@@ -505,9 +506,10 @@ def _setup_zai_cli():
     print("  ────────────────────────────────────────────────")
     print()
 
-    # Check if z-ai is already installed
-    import shutil
-    if shutil.which("z-ai"):
+    # Check if z-ai is already installed (handles Windows PATH issues)
+    from scribbler.llm import _find_zai_cli
+    zai_path = _find_zai_cli()
+    if zai_path:
         print("  ✓ Z.ai CLI is already installed!")
         settings.set_setting("provider", "zai_cli")
         settings.set_setting("api_key", "")
@@ -567,28 +569,48 @@ def _setup_zai_cli():
     print()
     print("  Installing... (this may take a minute)")
     try:
-        result = subprocess.run(
-            ["npm", "install", "-g", "z-ai-web-dev-sdk"],
-            capture_output=True, text=True, timeout=120
-        )
+        # On Windows, npm is npm.cmd — subprocess.run needs shell=True to find it
+        # On Mac/Linux, shell=True is also fine but not required
+        is_windows = sys.platform == "win32"
+        npm_cmd = "npm install -g z-ai-web-dev-sdk"
+
+        if is_windows:
+            result = subprocess.run(
+                npm_cmd,
+                shell=True,
+                capture_output=True, text=True, timeout=120
+            )
+        else:
+            result = subprocess.run(
+                ["npm", "install", "-g", "z-ai-web-dev-sdk"],
+                capture_output=True, text=True, timeout=120
+            )
+
         if result.returncode == 0:
             print("  ✓ Installation complete!")
         else:
             print(f"  ⚠ Installation may have had issues.")
-            print(f"  Output: {result.stderr[:200]}")
+            if result.stderr:
+                print(f"  Output: {result.stderr[:300]}")
+            if result.stdout:
+                print(f"  Log: {result.stdout[:300]}")
     except subprocess.TimeoutExpired:
-        print("  ⚠ Installation timed out. Try running manually:")
+        print("  ⚠ Installation timed out. Try running manually in a terminal:")
         print("    npm install -g z-ai-web-dev-sdk")
     except Exception as e:
         print(f"  ⚠ Error: {e}")
-        print("  Try running manually: npm install -g z-ai-web-dev-sdk")
+        print("  Try running manually in a terminal:")
+        print("    npm install -g z-ai-web-dev-sdk")
 
-    # Check if it worked
-    if shutil.which("z-ai"):
+    # Check if it worked (use _find_zai_cli to handle Windows PATH issues)
+    from scribbler.llm import _find_zai_cli
+    zai_path = _find_zai_cli()
+    if zai_path:
         settings.set_setting("provider", "zai_cli")
         settings.set_setting("api_key", "")
         print()
         print("  ✓ Z.ai CLI is now available!")
+        print(f"    Location: {zai_path}")
         print()
         print("  Testing connection...")
         result = llm.llm_complete("Say 'hello' and nothing else.")
@@ -606,6 +628,10 @@ def _setup_zai_cli():
         print("    1. Close this window")
         print("    2. Re-open it (so PATH refreshes)")
         print("    3. Come back to Settings and pick option 1 again")
+        print()
+        print("  Or the install may have failed. Check that Node.js is installed")
+        print("  and try running this in a terminal manually:")
+        print("    npm install -g z-ai-web-dev-sdk")
 
     pause()
 

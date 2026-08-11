@@ -62,12 +62,46 @@ def _try_openai_package(prompt: str, system: str = None) -> Optional[str]:
         return None
 
 
+def _find_zai_cli() -> Optional[str]:
+    """Find the z-ai CLI executable, handling Windows PATH issues."""
+    # First try: is it in PATH?
+    path = shutil.which("z-ai")
+    if path:
+        return path
+
+    # On Windows: npm installs global packages to a specific folder
+    # that might not be in PATH yet (if the parent shell was started before npm install)
+    if sys.platform == "win32":
+        # Common npm global locations on Windows
+        appdata = os.environ.get("APPDATA", "")
+        if appdata:
+            win_path = os.path.join(appdata, "npm", "z-ai.cmd")
+            if os.path.exists(win_path):
+                return win_path
+
+        # Try user profile
+        userprofile = os.environ.get("USERPROFILE", "")
+        if userprofile:
+            win_path = os.path.join(userprofile, "AppData", "Roaming", "npm", "z-ai.cmd")
+            if os.path.exists(win_path):
+                return win_path
+
+    # On Mac/Linux: npm global is usually in /usr/local/bin or ~/.npm-global/bin
+    else:
+        for candidate in ["/usr/local/bin/z-ai", "/usr/bin/z-ai", os.path.expanduser("~/.local/bin/z-ai")]:
+            if os.path.exists(candidate):
+                return candidate
+
+    return None
+
+
 def _try_zai_cli(prompt: str, system: str = None) -> Optional[str]:
     """Use the z-ai CLI (free, no API key needed)."""
-    if not shutil.which("z-ai"):
+    zai_path = _find_zai_cli()
+    if not zai_path:
         return None
     try:
-        cmd = ["z-ai", "chat", "-p", prompt]
+        cmd = [zai_path, "chat", "-p", prompt]
         if system:
             cmd.extend(["-s", system])
         result = subprocess.run(cmd, capture_output=True, text=True, timeout=90)
@@ -166,7 +200,9 @@ def llm_complete(prompt: str, system: str = None, max_retries: int = 2) -> Optio
 
 def llm_available() -> bool:
     """Check if any LLM method is available."""
-    return settings.has_api_key() or shutil.which("z-ai") is not None
+    if settings.has_api_key():
+        return True
+    return _find_zai_cli() is not None
 
 
 def llm_status() -> str:
@@ -176,10 +212,11 @@ def llm_status() -> str:
     provider_name = config.get("name", provider)
 
     if provider == "zai_cli":
-        if shutil.which("z-ai"):
+        zai_path = _find_zai_cli()
+        if zai_path:
             return f"Connected via Z.ai CLI (free, no API key needed)"
         else:
-            return f"Z.ai CLI selected but not installed. Run: npm install -g z-ai-web-dev-sdk"
+            return f"Z.ai CLI not installed. Run: npm install -g z-ai-web-dev-sdk"
     elif provider == "ollama":
         # Check if Ollama is running
         try:
@@ -191,10 +228,10 @@ def llm_status() -> str:
     elif settings.has_api_key():
         model = settings.get_model()
         return f"Connected to {provider_name} ({model})"
-    elif shutil.which("z-ai"):
+    elif _find_zai_cli():
         return f"Connected via z-ai CLI (no provider configured)"
     else:
-        return f"Not configured — using rule-based only. Pick a provider in Settings (menu option 13)."
+        return f"Not configured — pick a provider in Settings (menu option 13)"
 
 
 def llm_json(prompt: str, system: str = None) -> Optional[dict]:
