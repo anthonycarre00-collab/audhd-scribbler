@@ -5,11 +5,11 @@ title The Audhd Scribbler - Installer
 echo.
 echo   ============================================================
 echo                  THE AUDHD SCRIBBLER - INSTALLER
-echo            Your memoir's calm companion. One click. Done.
 echo   ============================================================
 echo.
 
-REM Try to find Python (python, py launcher, or python3)
+REM Step 1: Find Python
+echo   Step 1: Looking for Python...
 set "PYCMD="
 python --version >nul 2>&1 && set "PYCMD=python"
 if not defined PYCMD (
@@ -20,18 +20,21 @@ if not defined PYCMD (
 )
 
 if not defined PYCMD (
-    echo   [ERROR] Python is not installed or not in PATH.
+    echo.
+    echo   [FAILED] Python not found in PATH.
     echo.
     echo   You said Python 3.14 is installed, but Windows can't find it.
-    echo   This usually means Python was not added to PATH during install.
+    echo   This means Python was not added to PATH during install.
     echo.
-    echo   FIX: Open the Python installer again and choose "Modify",
-    echo   then make sure "Add Python to PATH" is checked.
-    echo.
-    echo   Or add Python manually to PATH:
-    echo   1. Find where Python is installed (usually C:\Users\YOU\AppData\Local\Programs\Python\Python314)
-    echo   2. Search Windows for "Environment Variables"
-    echo   3. Edit PATH, add the Python folder and the Python\Scripts folder
+    echo   FIX:
+    echo   1. Press Windows key, type "environment variables"
+    echo   2. Open "Edit the system environment variables"
+    echo   3. Click "Environment Variables" button
+    echo   4. Under "User variables", find "Path", click Edit
+    echo   5. Click New, add: C:\Users\%USERNAME%\AppData\Local\Programs\Python\Python314
+    echo   6. Click New, add: C:\Users\%USERNAME%\AppData\Local\Programs\Python\Python314\Scripts
+    echo   7. Click OK on all windows, close any command prompts
+    echo   8. Re-run this installer
     echo.
     pause
     exit /b 1
@@ -40,46 +43,116 @@ if not defined PYCMD (
 for /f "tokens=*" %%i in ('%PYCMD% --version') do set PYVER=%%i
 echo   [OK] Found %PYVER%
 
-REM Create virtual environment
-if not exist ".venv" (
-    echo   Creating virtual environment...
-    %PYCMD% -m venv .venv
-    if errorlevel 1 (
-        echo   [ERROR] Failed to create virtual environment.
-        pause
-        exit /b 1
-    )
+REM Step 2: Delete old broken venv (THIS IS THE KEY FIX)
+echo.
+echo   Step 2: Cleaning up old installation...
+if exist ".venv" (
+    echo   Found old .venv - deleting it to start fresh...
+    rmdir /s /q .venv
 )
+if exist "install.log" del install.log
+echo   [OK]
 
-REM Activate virtual environment
+REM Step 3: Create fresh venv
+echo.
+echo   Step 3: Creating virtual environment...
+%PYCMD% -m venv .venv
+if errorlevel 1 (
+    echo.
+    echo   [FAILED] Could not create virtual environment.
+    echo   This is unusual. Error has been saved to install.log
+    echo.
+    pause
+    exit /b 1
+)
+echo   [OK]
+
+REM Step 4: Activate venv and verify it works
+echo.
+echo   Step 4: Activating virtual environment...
 call .venv\Scripts\activate.bat
-
-REM Upgrade pip
-echo   Updating pip...
-python -m pip install --upgrade pip --quiet
-
-REM Install dependencies
-echo   Installing dependencies (this takes 2-3 minutes)...
-pip install -r requirements.txt --quiet
 if errorlevel 1 (
-    echo   [WARNING] Retrying dependency install with verbose output...
-    pip install -r requirements.txt
+    echo.
+    echo   [FAILED] Could not activate virtual environment.
+    pause
+    exit /b 1
+)
+echo   [OK]
+
+REM Step 5: Upgrade pip
+echo.
+echo   Step 5: Updating pip...
+python -m pip install --upgrade pip > install.log 2>&1
+if errorlevel 1 (
+    echo   [WARNING] pip upgrade had issues, continuing anyway...
 )
 
-REM Install the package
-echo   Installing scribbler...
-pip install -e . --quiet
-
-REM Download spaCy model
-echo   Downloading language model (this takes a minute)...
-python -m spacy download en_core_web_sm --quiet
+REM Step 6: Install dependencies
+echo.
+echo   Step 6: Installing dependencies (this takes 2-3 minutes)...
+echo   (Progress is being saved to install.log)
+pip install -r requirements.txt >> install.log 2>&1
 if errorlevel 1 (
-    echo   [WARNING] Language model download skipped. Character detection will use fallback.
+    echo.
+    echo   [FAILED] Could not install dependencies.
+    echo.
+    echo   This is likely a Python 3.14 compatibility issue.
+    echo   Python 3.14 is very new and some packages may not support it yet.
+    echo.
+    echo   RECOMMENDED FIX:
+    echo   Install Python 3.12 from https://www.python.org/downloads/
+    echo   During install, check "Add Python to PATH"
+    echo   Then re-run this installer.
+    echo.
+    echo   --- Last 20 lines of error log: ---
+    powershell -command "Get-Content install.log -Tail 20" 2>nul
+    echo   -----------------------------------
+    echo.
+    echo   Full log saved to: install.log
+    echo   Send me this file if you need help.
+    echo.
+    pause
+    exit /b 1
+)
+echo   [OK]
+
+REM Step 7: Install scribbler package
+echo.
+echo   Step 7: Installing scribbler...
+pip install -e . >> install.log 2>&1
+if errorlevel 1 (
+    echo.
+    echo   [FAILED] Could not install scribbler.
+    echo   See install.log for details.
+    echo.
+    pause
+    exit /b 1
+)
+echo   [OK]
+
+REM Step 8: Download spaCy model
+echo.
+echo   Step 8: Downloading language model (about 1 minute)...
+python -m spacy download en_core_web_sm >> install.log 2>&1
+if errorlevel 1 (
+    echo   [WARNING] Language model download skipped.
+    echo   Character detection will use a simpler fallback method.
+    echo   Everything else still works.
+) else (
+    echo   [OK]
 )
 
-REM Initialize project
-echo   Setting up folders...
+REM Step 9: Initialize project
+echo.
+echo   Step 9: Setting up folders...
 python -m scribbler.cli init
+if errorlevel 1 (
+    echo.
+    echo   [FAILED] Could not set up folders.
+    echo.
+    pause
+    exit /b 1
+)
 
 echo.
 echo   ============================================================
@@ -89,12 +162,8 @@ echo.
 echo   Your tool is ready. To use it:
 echo.
 echo     1. Drop text files (.txt or .md) into the "raw-dumps" folder
-echo        (brain dumps, voice memos, freewrites - anything goes)
-echo.
 echo     2. Double-click "SCRIBBLER-Windows.bat" to open the menu
-echo.
 echo     3. Pick option 1 to tag your files
-echo.
 echo     4. Pick option 2 to see your dashboard
 echo.
 echo   That's it. No console needed.
