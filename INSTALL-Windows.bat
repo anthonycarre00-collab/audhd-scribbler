@@ -1,5 +1,4 @@
 @echo off
-chcp 65001 >nul 2>&1
 cd /d "%~dp0"
 title The Audhd Scribbler - Installer
 
@@ -10,30 +9,41 @@ echo            Your memoir's calm companion. One click. Done.
 echo   ============================================================
 echo.
 
-REM Check Python
-python --version >nul 2>&1
-if errorlevel 1 (
+REM Try to find Python (python, py launcher, or python3)
+set "PYCMD="
+python --version >nul 2>&1 && set "PYCMD=python"
+if not defined PYCMD (
+    py --version >nul 2>&1 && set "PYCMD=py"
+)
+if not defined PYCMD (
+    python3 --version >nul 2>&1 && set "PYCMD=python3"
+)
+
+if not defined PYCMD (
     echo   [ERROR] Python is not installed or not in PATH.
     echo.
-    echo   Please install Python 3.8 or newer from:
-    echo     https://www.python.org/downloads/
+    echo   You said Python 3.14 is installed, but Windows can't find it.
+    echo   This usually means Python was not added to PATH during install.
     echo.
-    echo   IMPORTANT: During installation, check the box that says
-    echo   "Add Python to PATH" at the bottom of the installer.
+    echo   FIX: Open the Python installer again and choose "Modify",
+    echo   then make sure "Add Python to PATH" is checked.
     echo.
-    echo   Then re-run this script.
+    echo   Or add Python manually to PATH:
+    echo   1. Find where Python is installed (usually C:\Users\YOU\AppData\Local\Programs\Python\Python314)
+    echo   2. Search Windows for "Environment Variables"
+    echo   3. Edit PATH, add the Python folder and the Python\Scripts folder
     echo.
     pause
     exit /b 1
 )
 
-for /f "tokens=*" %%i in ('python --version') do set PYVER=%%i
+for /f "tokens=*" %%i in ('%PYCMD% --version') do set PYVER=%%i
 echo   [OK] Found %PYVER%
 
 REM Create virtual environment
 if not exist ".venv" (
     echo   Creating virtual environment...
-    python -m venv .venv
+    %PYCMD% -m venv .venv
     if errorlevel 1 (
         echo   [ERROR] Failed to create virtual environment.
         pause
@@ -52,7 +62,7 @@ REM Install dependencies
 echo   Installing dependencies (this takes 2-3 minutes)...
 pip install -r requirements.txt --quiet
 if errorlevel 1 (
-    echo   [WARNING] Some dependencies failed to install. Trying again...
+    echo   [WARNING] Retrying dependency install with verbose output...
     pip install -r requirements.txt
 )
 
@@ -79,7 +89,7 @@ echo.
 echo   Your tool is ready. To use it:
 echo.
 echo     1. Drop text files (.txt or .md) into the "raw-dumps" folder
-echo        (brain dumps, voice memos, freewrites — anything goes)
+echo        (brain dumps, voice memos, freewrites - anything goes)
 echo.
 echo     2. Double-click "SCRIBBLER-Windows.bat" to open the menu
 echo.
