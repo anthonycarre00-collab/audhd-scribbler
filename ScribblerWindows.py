@@ -1,26 +1,18 @@
-"""Silent Windows launcher for the Audhd Scribbler workspace."""
+"""Silent Windows launcher for the interactive Audhd Scribbler app."""
 from pathlib import Path
 import sys
 import traceback
-import webbrowser
 
 
 def main():
     root = Path(__file__).resolve().parent
     sys.path.insert(0, str(root))
-
-    from scribbler import db
-    from scribbler.config import FOLDERS, DATA_DIR, DASHBOARD_DIR, PROJECT_ROOT
-    from scribbler.dashboard import generate
-
-    for folder in FOLDERS:
-        (PROJECT_ROOT / folder).mkdir(parents=True, exist_ok=True)
-    DATA_DIR.mkdir(parents=True, exist_ok=True)
-    DASHBOARD_DIR.mkdir(parents=True, exist_ok=True)
-
-    db.get_db().close()
-    output = generate()
-    webbrowser.open(Path(output).resolve().as_uri())
+    from scribbler.webapp import run_server
+    server = run_server(open_browser=True)
+    try:
+        server.serve_forever()
+    finally:
+        server.server_close()
 
 
 if __name__ == "__main__":
