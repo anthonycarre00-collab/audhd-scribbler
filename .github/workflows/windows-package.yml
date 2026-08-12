@@ -27,7 +27,7 @@ jobs:
           pip install pyinstaller
           python -m spacy download en_core_web_sm
 
-      - name: Build console-free executable
+      - name: Build console-free interactive executable
         shell: pwsh
         run: |
           pyinstaller --noconfirm --clean --onefile --windowed --name ScribblerWindows --collect-all en_core_web_sm ScribblerWindows.py
