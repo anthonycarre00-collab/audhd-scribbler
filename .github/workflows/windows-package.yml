@@ -3,7 +3,7 @@ name: Windows package
 on:
   workflow_dispatch:
   push:
-    branches: [ux-redesign]
+    branches: [main]
     tags:
       - 'v*'
 
@@ -19,7 +19,7 @@ jobs:
         with:
           python-version: '3.12'
 
-      - name: Install package
+      - name: Install package dependencies
         shell: pwsh
         run: |
           python -m pip install --upgrade pip
