@@ -6,6 +6,7 @@ analysis-result replacement, or future manuscript editing.
 """
 from datetime import datetime
 from pathlib import Path
+import json
 import shutil
 import sqlite3
 
@@ -49,6 +50,7 @@ def backup_file(path, reason="change"):
 
 
 def project_snapshot(reason="manual"):
+    """Preserve the database and all writer-owned text before a risky operation."""
     db_backup = backup_database(reason)
     file_count = 0
     for folder in ("raw-dumps", "triage", "chapters", "drafts", "final", "archive", "characters", "places", "themes", "research"):
@@ -57,4 +59,13 @@ def project_snapshot(reason="manual"):
         for path in directory.rglob("*"):
             if path.is_file() and path.suffix.lower() in {".txt", ".md", ".text"}:
                 backup_file(path, reason); file_count += 1
-    return {"database": str(db_backup) if db_backup else None, "files": file_count, "timestamp": datetime.now().isoformat()}
+    result = {"database": str(db_backup) if db_backup else None, "files": file_count, "timestamp": datetime.now().isoformat(timespec="seconds"), "reason": reason}
+    manifest_dir = BACKUP_DIR / "manifests"
+    manifest_dir.mkdir(parents=True, exist_ok=True)
+    (manifest_dir / f"{_stamp()}-{reason}.json").write_text(json.dumps(result, indent=2), encoding="utf-8")
+    return result
+
+
+def recent_backups(limit=12):
+    ensure_backup_dir()
+    return sorted(BACKUP_DIR.rglob("*.db"), reverse=True)[:limit]
