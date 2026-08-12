@@ -7,8 +7,9 @@ import traceback
 def main():
     root = Path(__file__).resolve().parent
     sys.path.insert(0, str(root))
-    from scribbler.webapp import run_server
-    server = run_server(open_browser=True)
+    from scribbler import webapp, writer_ui
+    writer_ui.install()
+    server = webapp.run_server(open_browser=True)
     try:
         server.serve_forever()
     finally:
