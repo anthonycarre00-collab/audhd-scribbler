@@ -1,4 +1,4 @@
-"""Silent Windows launcher for the interactive Audhd Scribbler app."""
+"""Silent Windows launcher for the single interactive Audhd Scribbler workspace."""
 from pathlib import Path
 import sys
 import traceback
@@ -7,8 +7,9 @@ import traceback
 def main():
     root = Path(__file__).resolve().parent
     sys.path.insert(0, str(root))
-    from scribbler import webapp, writer_ui
-    writer_ui.install()
+    from scribbler import webapp
+    from scribbler.desktop_overrides import install
+    install(webapp.Handler)
     server = webapp.run_server(open_browser=True)
     try:
         server.serve_forever()
