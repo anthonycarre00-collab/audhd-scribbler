@@ -28,7 +28,16 @@ DB_PATH = DATA_DIR / "scribbler.db"
 REPORTS_DIR = DATA_DIR / "reports"
 ERA_SPAN_START = 1980
 ERA_SPAN_END = 2025
-ERAS = [("childhood", "Early years, pre-adolescence"),("adolescence", "Teen years"),("twenties", "Approximately 20-29"),("thirties", "Approximately 30-39"),("forties", "Approximately 40-49"),("fif[...]
+ERAS = [
+    ("childhood", "Early years, pre-adolescence"),
+    ("adolescence", "Teen years"),
+    ("twenties", "Approximately 20-29"),
+    ("thirties", "Approximately 30-39"),
+    ("forties", "Approximately 40-49"),
+    ("fifties", "Approximately 50-59"),
+    ("sixties", "Approximately 60-69"),
+    ("seventies", "Approximately 70+"),
+]
 STATUSES = ["seedling", "growing", "shaping", "polishing", "resting"]
 VOICES = ["narrator", "character", "research", "lyric", "other"]
 SENSORY_CATEGORIES = {
@@ -40,9 +49,18 @@ SENSORY_CATEGORIES = {
     "proprioception": ["balance", "dizzy", "steady", "tilt", "fall", "stumble", "grounded", "weightless", "heavy", "light"],
     "interoception": ["heartbeat", "pulse", "breath", "breathing", "chest", "stomach", "gut", "throat", "tension", "tight", "knot", "hollow", "full", "empty", "racing", "flutter"],
 }
-AUDHD_THEMES = {"diagnosis": ["diagnosis", "diagnosed", "diagnostic", "assessment", "evaluated", "tested", "labeled", "identified"], "masking": ["masking", "mask", "pretending", "passing", "camouf[...]
-WEAK_WORDS = ["just", "really", "very", "suddenly", "somewhat", "quite", "rather", "actually", "basically", "literally", "simply", "totally", "ultimately", "virtually", "practically", "seemingly",[...]
-FILTER_WORDS = ["saw", "heard", "felt", "noticed", "realized", "knew", "thought", "wondered", "looked", "watched", "seemed", "appeared", "decided", "remembered", "recognized", "touched", "smelled"[...]
+AUDHD_THEMES = {
+    "diagnosis": ["diagnosis", "diagnosed", "diagnostic", "assessment", "evaluated", "tested", "labeled", "identified"],
+    "masking": ["masking", "mask", "pretending", "passing", "camouflage", "camouflaging", "blending in"],
+}
+WEAK_WORDS = [
+    "just", "really", "very", "suddenly", "somewhat", "quite", "rather", "actually", "basically",
+    "literally", "simply", "totally", "ultimately", "virtually", "practically", "seemingly",
+]
+FILTER_WORDS = [
+    "saw", "heard", "felt", "noticed", "realized", "knew", "thought", "wondered", "looked", "watched",
+    "seemed", "appeared", "decided", "remembered", "recognized", "touched", "smelled",
+]
 ANACHRONISM_WATCHLIST = {
     "technology": ["smartphone", "iphone", "android", "facebook", "instagram", "whatsapp", "twitter", "tiktok", "google"],
     "media": ["streaming", "netflix", "spotify", "podcast"],
