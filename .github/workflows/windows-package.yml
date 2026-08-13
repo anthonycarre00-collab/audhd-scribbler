@@ -13,12 +13,10 @@ jobs:
     steps:
       - name: Checkout
         uses: actions/checkout@v4
-
       - name: Set up Python
         uses: actions/setup-python@v5
         with:
           python-version: '3.12'
-
       - name: Install package dependencies and language model
         shell: pwsh
         run: |
@@ -26,20 +24,19 @@ jobs:
           pip install -r requirements.txt
           pip install pyinstaller
           python -m spacy download en_core_web_sm
-
+      - name: Run application smoke test before packaging
+        shell: pwsh
+        run: python smoke_test.py
       - name: Build console-free interactive executable
         shell: pwsh
         run: |
           pyinstaller --noconfirm --clean --onefile --windowed --name ScribblerWindows --collect-all en_core_web_sm ScribblerWindows.py
-
       - name: Install Inno Setup
         shell: pwsh
         run: choco install innosetup --no-progress -y
-
       - name: Build installer
         shell: pwsh
         run: iscc installer/windows.iss
-
       - name: Upload installer
         uses: actions/upload-artifact@v4
         with:
