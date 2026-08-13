@@ -1,6 +1,6 @@
 ; Inno Setup definition for the self-contained Windows Scribbler build.
 #define AppName "The Audhd Scribbler"
-#define AppVersion "2.0.0"
+#define AppVersion "4.1.0"
 #define Publisher "The Audhd Scribbler"
 #define ExeName "ScribblerWindows.exe"
 
@@ -19,9 +19,12 @@ WizardStyle=modern
 ArchitecturesInstallIn64BitMode=x64compatible
 PrivilegesRequired=lowest
 UninstallDisplayIcon={app}\{#ExeName}
+CloseApplications=yes
+RestartApplications=no
+UsePreviousAppDir=no
 
 [Files]
-Source: "..\dist\{#ExeName}"; DestDir: "{app}"; Flags: ignoreversion
+Source: "..\dist\{#ExeName}"; DestDir: "{app}"; Flags: ignoreversion restartreplace
 
 [Icons]
 Name: "{autodesktop}\{#AppName}"; Filename: "{app}\{#ExeName}"; WorkingDir: "{app}"
