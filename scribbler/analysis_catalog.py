@@ -1,37 +1,32 @@
-"""Analysis catalogue: separate writer stages and avoid indiscriminate Run All."""
-
-ANALYSIS_CATALOG = {
-    "craft": {"title": "Craft & Rhythm", "stage": "draft", "group": "Prose", "safe_with": ["voice", "editor", "repetition"], "purpose": "Sentence rhythm, craft signals and places worth a closer human look."},
-    "voice": {"title": "Voice & Tense", "stage": "draft", "group": "Prose", "safe_with": ["craft", "characters", "editor"], "purpose": "Narrator voice, tense consistency and shifts in narrative stance."},
-    "characters": {"title": "Characters & Relationships", "stage": "draft", "group": "Story", "safe_with": ["voice", "continuity", "themes"], "purpose": "Presence, relationships, character movement and voice distinctions."},
-    "continuity": {"title": "Continuity & Timeline", "stage": "draft", "group": "Story", "safe_with": ["characters", "themes"], "purpose": "Chronology, recurring facts, ages, places and unresolved inconsistencies."},
-    "themes": {"title": "Themes & Emotional Arc", "stage": "draft", "group": "Story", "safe_with": ["characters", "continuity"], "purpose": "Recurring themes, motifs and emotional movement through the selected material."},
-    "editor": {"title": "Editorial / Memoir Patterns", "stage": "near-final", "group": "Editorial", "safe_with": ["craft", "voice", "repetition"], "purpose": "Higher-level editorial signals such as clarity, redundancy and memoir-specific balance."},
-    "repetition": {"title": "Repetition & Echoes", "stage": "draft", "group": "Prose", "safe_with": ["craft", "editor"], "purpose": "Repeated words, phrases and nearby echoes across the selected draft."},
-    "pacing": {"title": "Pacing & Momentum", "stage": "draft", "group": "Structure", "safe_with": ["themes", "continuity"], "purpose": "Where the manuscript accelerates, stalls or changes gear."},
-    "structure": {"title": "Structure & Chapter Purpose", "stage": "near-final", "group": "Structure", "safe_with": ["pacing", "themes", "continuity"], "purpose": "Chapter roles, openings, endings, sequence and cause/effect."},
-    "memoir": {"title": "Memoir Lens", "stage": "near-final", "group": "Memoir", "safe_with": ["themes", "structure", "voice"], "purpose": "Reflection vs event, narrator distance, memory/claim uncertainty and thematic coherence."},
-    "reader": {"title": "Reader Experience", "stage": "near-final", "group": "Editorial", "safe_with": ["pacing", "structure", "themes"], "purpose": "Opening promise, likely confusion points, engagement dips and emotional peaks."},
-    "research": {"title": "Research & Fact Flags", "stage": "near-final", "group": "Accuracy", "safe_with": ["continuity", "memoir"], "purpose": "Surfaces claims and dates worth verifying; it does not declare facts true or false."},
-    "market": {"title": "Comps & Market Position", "stage": "final", "group": "Publishing", "safe_with": ["themes", "structure", "memoir"], "purpose": "Comparable titles and positioning once the book's identity is reasonably settled."},
+"""Single source of truth for the visible analysis suite."""
+ANALYSIS_CATALOG={
+"craft":{"title":"Craft & Rhythm","stage":"draft","group":"Prose","purpose":"Sentence rhythm, balance and craft signals."},
+"voice":{"title":"Voice & Tense","stage":"draft","group":"Prose","purpose":"Narrator voice, tense and narrative stance."},
+"characters":{"title":"Characters & Relationships","stage":"draft","group":"Story","purpose":"Presence, relationships and character movement."},
+"continuity":{"title":"Continuity & Timeline","stage":"draft","group":"Story","purpose":"Chronology, recurring facts and inconsistencies."},
+"themes":{"title":"Themes & Emotional Arc","stage":"draft","group":"Story","purpose":"Themes and emotional movement."},
+"editor":{"title":"Editorial Patterns","stage":"near-final","group":"Editorial","purpose":"Clarity, redundancy and editorial signals."},
+"repetition":{"title":"Repetition & Echoes","stage":"draft","group":"Prose","purpose":"Repeated words and phrases worth reviewing."},
+"pacing":{"title":"Pacing & Momentum","stage":"draft","group":"Structure","purpose":"Acceleration, slowing and changes of gear."},
+"structure":{"title":"Structure & Chapter Purpose","stage":"near-final","group":"Structure","purpose":"Openings, endings, paragraph shape and structural signals."},
+"memoir":{"title":"Memoir Lens","stage":"near-final","group":"Optional","purpose":"Reflection, event balance and memory uncertainty; useful for memoir but not required."},
+"reader":{"title":"Reader Experience","stage":"near-final","group":"Editorial","purpose":"Opening, dialogue and possible reader-friction signals."},
+"research":{"title":"Research & Fact Flags","stage":"near-final","group":"Accuracy","purpose":"Dates and claims worth checking; never declares facts true or false."},
+"cadence":{"title":"Cadence & Rhythm","stage":"draft","group":"Prose","purpose":"Sentence movement, pauses and contrast."},
+"motifs":{"title":"Motifs & Echoes","stage":"draft","group":"Story","purpose":"Recurring words and phrases as candidate motifs."},
+"anchors":{"title":"Structural Anchors","stage":"draft","group":"Structure","purpose":"Recurring openings, endings and textual anchors."},
+"voice_dna":{"title":"Voice DNA","stage":"draft","group":"Writer","purpose":"Compare selected writing against approved personal writing samples."},
+"reader_perception":{"title":"Reader Perception","stage":"draft","group":"Writer","purpose":"Evidence-first impression of narrator/author and named characters when AI is configured."},
 }
 
-
 def recommended(stage="draft"):
-    order = {"draft": 0, "near-final": 1, "final": 2}
-    return [k for k, v in ANALYSIS_CATALOG.items() if order.get(v["stage"], 0) <= order.get(stage, 0)]
-
+ order={"draft":0,"near-final":1,"final":2}; ceiling=order.get(stage,0)
+ return [k for k,v in ANALYSIS_CATALOG.items() if order.get(v.get("stage","draft"),0)<=ceiling]
 
 def run_all_warning(selected):
-    selected = list(dict.fromkeys(selected))
-    if len(selected) < 2:
-        return None
-    risky = []
-    for key in selected:
-        meta = ANALYSIS_CATALOG.get(key, {})
-        conflicts = [other for other in selected if other != key and other not in meta.get("safe_with", [])]
-        if conflicts:
-            risky.append((key, conflicts))
-    if not risky:
-        return None
-    return "Run All is deliberately cautious: some analyses overlap or require a different manuscript stage. Scribbler will run compatible diagnostics first and leave stage-specific/interpretive tools for explicit confirmation."
+ selected=list(dict.fromkeys(selected)); risky=[]
+ safe={"craft":{"voice","editor","cadence"},"voice":{"craft","characters","cadence","voice_dna"},"characters":{"voice","continuity","themes"},"continuity":{"characters","themes","research"},"themes":{"characters","continuity","motifs"},"editor":{"craft","voice","repetition","pacing"},"repetition":{"craft","editor","motifs"},"pacing":{"themes","structure","continuity"},"structure":{"pacing","themes","continuity","anchors"},"memoir":{"themes","structure","voice","reader"},"reader":{"pacing","structure","themes"},"research":{"continuity","memoir"},"cadence":{"craft","voice","voice_dna"},"motifs":{"themes","repetition","anchors"},"anchors":{"structure","motifs"},"voice_dna":{"voice","cadence"},"reader_perception":{"voice","characters","themes"}}
+ for k in selected:
+  bad=[x for x in selected if x!=k and x not in safe.get(k,set())]
+  if bad:risky.append((k,bad))
+ return "Some selected tools overlap or answer different questions. Review findings in context; Scribbler will not treat any diagnostic as an instruction." if risky else None
