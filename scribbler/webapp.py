@@ -1,228 +1,214 @@
-"""The single interactive desktop workspace for Audhd Scribbler.
-
-The browser is only the local UI. All writing remains on the user's machine.
-The workspace deliberately separates:
-  INBOX / TAGGING  -> raw brain dumps and notes
-  MANUSCRIPT       -> chapters and drafts
-  ANALYSIS         -> deliberate analysis of selected manuscript material
-"""
+"""Unified local writer workspace for Audhd Scribbler."""
 from __future__ import annotations
-import html, json, mimetypes, os, re, urllib.parse
-from http import HTTPStatus
-from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
+import html,json,os,re,urllib.parse
+from http.server import BaseHTTPRequestHandler,ThreadingHTTPServer
 from pathlib import Path
-from . import db, llm, tagger
-from .config import PROJECT_ROOT, FOLDERS
+from . import db,llm,tagger,safety
+from .config import PROJECT_ROOT,FOLDERS
 from .file_io import read_text_file
-from .analyzers import craft, voice_tense, characters, continuity, themes, editor
-from .writer_intelligence import cadence_rhythm, motif_scan, structural_anchors, metrics, voice_report, chapter_comparison, ai_perceptions
-from . import safety
+from .analysis_catalog import ANALYSIS_CATALOG
+from .analyzers import craft,voice_tense,characters,continuity,themes,editor
+from .analysis_suite import run as suite_run
+from .writer_intelligence import cadence_rhythm,motif_scan,structural_anchors,voice_report,chapter_comparison,ai_perceptions
+from .export import export_markdown,export_plain_text,export_docx,export_analysis_report
 
-ANALYZERS = {
-    "craft": ("Craft & Rhythm", "Prose", "draft", craft.analyze),
-    "voice": ("Voice & Tense", "Prose", "draft", voice_tense.analyze),
-    "characters": ("Characters & Relationships", "Story", "draft", characters.analyze),
-    "continuity": ("Continuity & Timeline", "Story", "draft", continuity.analyze),
-    "themes": ("Themes & Emotional Arc", "Story", "draft", themes.analyze),
-    "editor": ("Editorial Patterns", "Editorial", "near-final", editor.analyze),
-    "cadence": ("Cadence & Rhythm", "Prose", "draft", cadence_rhythm),
-    "motifs": ("Motifs & Echoes", "Story", "draft", motif_scan),
-    "anchors": ("Structural Anchors", "Structure", "draft", structural_anchors),
-    "voice_dna": ("Voice DNA", "Writer", "draft", voice_report),
+TOOLS={
+ "craft":("Craft & Rhythm","Prose","Sentence rhythm, balance and craft signals.",craft.analyze),
+ "voice":("Voice & Tense","Prose","Narrator voice, tense and narrative stance.",voice_tense.analyze),
+ "characters":("Characters & Relationships","Story","Presence, relationships and character movement.",characters.analyze),
+ "continuity":("Continuity & Timeline","Story","Chronology, recurring facts and inconsistencies.",continuity.analyze),
+ "themes":("Themes & Emotional Arc","Story","Themes and emotional movement.",themes.analyze),
+ "editor":("Editorial Patterns","Editorial","Clarity, redundancy and editorial signals.",editor.analyze),
+ "repetition":("Repetition & Echoes","Prose","Repeated words and phrases.",None),
+ "pacing":("Pacing & Momentum","Structure","Acceleration, slowing and sentence/paragraph movement.",None),
+ "structure":("Structure & Chapter Purpose","Structure","Openings, endings, paragraph shape and structural signals.",None),
+ "memoir":("Memoir Lens","Memoir","Reflection, event balance and memory uncertainty. Optional for non-memoir work.",None),
+ "reader":("Reader Experience","Editorial","Opening, dialogue and possible reader-friction signals.",None),
+ "research":("Research & Fact Flags","Accuracy","Dates and claims worth checking; never declares facts true/false.",None),
+ "cadence":("Cadence & Rhythm","Prose","Sentence movement, pauses and contrast.",cadence_rhythm),
+ "motifs":("Motifs & Echoes","Story","Recurring words/phrases; candidate patterns, not automatic meanings.",motif_scan),
+ "anchors":("Structural Anchors","Structure","Recurring openings, endings and textual anchors.",structural_anchors),
+ "voice_dna":("Voice DNA","Writer","Compare against approved personal writing samples.",voice_report),
+ "reader_perception":("Reader Perception","Writer","Textual impression of narrator/author and named characters; evidence-first AI when available.",None),
 }
 
-def _safe_name(name):
-    name = Path(str(name or "untitled.txt")).name
-    name = re.sub(r"[^A-Za-z0-9._ -]+", "_", name).strip(" .") or "untitled.txt"
-    if Path(name).suffix.lower() not in {".txt", ".md", ".text"}: name += ".txt"
-    return name
+def safe_name(n):
+ n=Path(str(n or "untitled.txt")).name; n=re.sub(r"[^A-Za-z0-9._ -]+","_",n).strip(" .") or "untitled.txt"
+ return n if Path(n).suffix.lower() in {".txt",".md",".text"} else n+".txt"
 
-def _unique_path(folder, filename):
-    p = folder / filename
-    if not p.exists(): return p
-    for i in range(2, 10000):
-        q = folder / f"{p.stem} ({i}){p.suffix}"
-        if not q.exists(): return q
-    raise RuntimeError("Could not create a unique filename")
+def unique(folder,name):
+ p=folder/name
+ if not p.exists(): return p
+ for i in range(2,10000):
+  q=folder/f"{p.stem} ({i}){p.suffix}"
+  if not q.exists(): return q
+ raise RuntimeError("Unable to create a unique filename")
 
-def _find_file(raw):
-    p = Path(str(raw or ""))
-    if not p.is_absolute(): p = PROJECT_ROOT / p
-    p = p.resolve()
-    try: p.relative_to(PROJECT_ROOT.resolve())
-    except ValueError: raise ValueError("File is outside the Scribbler project")
-    if not p.exists() or p.suffix.lower() not in {".txt", ".md", ".text"}: raise ValueError("Writing file not found")
-    return p
+def find_file(raw):
+ p=Path(str(raw)); p=PROJECT_ROOT/p if not p.is_absolute() else p; p=p.resolve()
+ try:p.relative_to(PROJECT_ROOT.resolve())
+ except ValueError:raise ValueError("File is outside the Scribbler project")
+ if not p.exists() or p.suffix.lower() not in {".txt",".md",".text"}:raise ValueError("Writing file not found")
+ return p
 
-def _json_safe(v):
-    if isinstance(v, dict): return {str(k): _json_safe(x) for k,x in v.items()}
-    if isinstance(v, (list,tuple)): return [_json_safe(x) for x in v]
-    if isinstance(v, (str,int,float,bool)) or v is None: return v
-    return str(v)
+def body(path):
+ t=read_text_file(path)
+ if t.startswith("---"):
+  m=re.match(r"^---\s*\n.*?\n---\s*\n",t,re.S)
+  if m:t=t[m.end():]
+ return re.sub(r"<!-- SCRIBBLER SUMMARY[\s\S]*?-->","",t).strip()
 
-def _api_files():
-    out=[]
-    for x in db.get_all_files():
-        out.append({"path":x.get("path"),"filename":x.get("filename"),"folder":x.get("folder"),"word_count":x.get("word_count",0),"status":x.get("status","seedling"),"characters":x.get("characters") or [],"places":x.get("places") or [],"themes":x.get("themes") or [],"last_analyzed":x.get("last_analyzed") or ""})
-    # Include imported files even before the index catches up.
-    known={x["path"] for x in out}
-    for folder in ("raw-dumps","triage","chapters","drafts","final"):
-        root=PROJECT_ROOT/folder
-        if root.exists():
-            for p in root.glob("*"):
-                if p.is_file() and p.suffix.lower() in {".txt",".md",".text"}:
-                    rel=str(p.relative_to(PROJECT_ROOT))
-                    if rel not in known:
-                        try: wc=len(read_text_file(p).split())
-                        except Exception: wc=0
-                        out.append({"path":rel,"filename":p.name,"folder":folder,"word_count":wc,"status":"unindexed","characters":[],"places":[],"themes":[],"last_analyzed":""})
-    return sorted(out,key=lambda x:(x.get("folder", ""),x.get("filename", "").lower()))
+def js(v):
+ if isinstance(v,dict):return {str(k):js(x) for k,x in v.items()}
+ if isinstance(v,(list,tuple)):return [js(x) for x in v]
+ if isinstance(v,(str,int,float,bool)) or v is None:return v
+ return str(v)
 
-def _body_text(path):
-    text=read_text_file(path)
-    if text.startswith("---"):
-        m=re.match(r"^---\s*\n.*?\n---\s*\n",text,re.S)
-        if m: text=text[m.end():]
-    return re.sub(r"<!-- SCRIBBLER SUMMARY[\s\S]*?-->","",text).strip()
+def files():
+ out=[]; seen=set()
+ for x in db.get_all_files():
+  p=x.get("path"); seen.add(p); out.append({"path":p,"filename":x.get("filename"),"folder":x.get("folder"),"word_count":x.get("word_count",0),"status":x.get("status","seedling"),"last_analyzed":x.get("last_analyzed") or ""})
+ for folder in ("raw-dumps","triage","chapters","drafts","final"):
+  root=PROJECT_ROOT/folder
+  if root.exists():
+   for p in root.iterdir():
+    if p.is_file() and p.suffix.lower() in {".txt",".md",".text"}:
+     rel=str(p.relative_to(PROJECT_ROOT))
+     if rel not in seen:
+      out.append({"path":rel,"filename":p.name,"folder":folder,"word_count":len(body(p).split()),"status":"unindexed","last_analyzed":""})
+ return sorted(out,key=lambda x:(x["folder"],x["filename"].lower()))
 
-def _run_tool(tool,text,all_files=None):
-    if tool=="voice_dna": return voice_report(text)
-    fn=ANALYZERS.get(tool,(None,None,None,None))[3]
-    if not fn: raise ValueError(f"Unknown analysis tool: {tool}")
-    if tool=="characters": return fn(text,all_files=all_files or [])
-    return fn(text)
+def tag_preview(p,use_ai=True):
+ text=body(p)
+ return {"filename":p.name,"word_count":len(text.split()),"voice":tagger.detect_voice(text),"era":tagger.detect_era(text),"emotional_register":tagger.detect_emotional_register(text),"sensory":tagger.detect_sensory(text),"themes":tagger.detect_themes(text),"characters":tagger.detect_characters(text),"places":tagger.detect_places(text),"ai_available":llm.llm_available() if use_ai else False}
 
-def _save_result(path,tool,result):
-    db.save_analysis(str(path.resolve()),tool,_json_safe(result))
+def run_tool(key,text,all_files):
+ meta=TOOLS[key]; fn=meta[3]
+ if key=="reader_perception":
+  r=ai_perceptions(text)
+  return r or {"status":"AI unavailable","note":"Enable a configured AI provider for reader-perception analysis."}
+ if key=="voice_dna":return voice_report(text)
+ if fn:
+  if key=="characters":return fn(text,all_files=all_files)
+  return fn(text)
+ return suite_run(key,text)
 
 class Handler(BaseHTTPRequestHandler):
-    server_version="AudhdScribbler/3.0"
-    def log_message(self,*args): return
-    def _json(self,payload,status=200):
-        data=json.dumps(payload,ensure_ascii=False).encode(); self.send_response(status); self.send_header("Content-Type","application/json; charset=utf-8"); self.send_header("Cache-Control","no-store"); self.send_header("Content-Length",str(len(data))); self.end_headers(); self.wfile.write(data)
-    def _body(self):
-        n=int(self.headers.get("Content-Length","0"))
-        if n>50*1024*1024: raise ValueError("File is larger than 50 MB")
-        return self.rfile.read(n)
-    def do_GET(self):
-        try:
-            path=urllib.parse.urlparse(self.path).path
-            if path=="/api/files": return self._json({"files":_api_files(),"llm":llm.llm_status(),"snapshots":len(safety.recent_snapshots())})
-            if path=="/api/status": return self._json({"llm":llm.llm_status(),"project":str(PROJECT_ROOT),"snapshots":len(safety.recent_snapshots())})
-            return self._html()
-        except Exception as e: return self._json({"ok":False,"error":str(e)},400)
-    def do_POST(self):
-        try:
-            path=urllib.parse.urlparse(self.path).path
-            if path=="/api/import": return self._import()
-            if path=="/api/note": return self._note()
-            if path=="/api/tag": return self._tag()
-            if path=="/api/analyze": return self._analyze()
-            if path=="/api/backup": return self._backup()
-            if path=="/api/refresh": return self._json({"ok":True})
-            if path=="/api/open-folder":
-                b=json.loads(self._body() or b"{}"); folder=b.get("folder","raw-dumps")
-                if folder not in FOLDERS: raise ValueError("Unknown folder")
-                os.startfile(str(PROJECT_ROOT/folder)); return self._json({"ok":True})
-            return self._json({"ok":False,"error":"Unknown action"},404)
-        except Exception as e: return self._json({"ok":False,"error":str(e)},400)
-    def _import(self):
-        ctype=self.headers.get("Content-Type","")
-        if "multipart/form-data" not in ctype: raise ValueError("Invalid upload")
-        m=re.search(r"boundary=(?:\"([^\"]+)\"|([^;]+))",ctype)
-        if not m: raise ValueError("Upload boundary missing")
-        boundary=(m.group(1) or m.group(2)).encode(); body=self._body(); marker=b"--"+boundary; files=[]; folder="raw-dumps"
-        for part in body.split(marker):
-            end=part.find(b"\r\n\r\n")
-            if end<0: continue
-            headers=part[:end].decode("utf-8",errors="replace"); content=part[end+4:]
-            if content.endswith(b"\r\n"): content=content[:-2]
-            fm=re.search(r'filename="([^"]*)"',headers)
-            if not fm: continue
-            fn=_safe_name(fm.group(1))
-            if Path(fn).suffix.lower() not in {".txt",".md",".text"}: continue
-            files.append((fn,content))
-            if 'name="destination"' in headers:
-                try: folder=content.decode().strip()
-                except Exception: pass
-        if folder not in {"raw-dumps","chapters","drafts"}: folder="raw-dumps"
-        target=PROJECT_ROOT/folder; target.mkdir(parents=True,exist_ok=True); saved=[]
-        # Import is a copy operation; original files are never modified.
-        safety.create_snapshot("before-import")
-        for fn,content in files:
-            p=_unique_path(target,fn); p.write_bytes(content); saved.append(str(p.relative_to(PROJECT_ROOT)))
-        return self._json({"ok":True,"saved":saved,"folder":folder,"message":f"Saved {len(saved)} file(s) to {folder}."})
-    def _note(self):
-        b=json.loads(self._body() or b"{}"); text=str(b.get("text","")).strip(); title=_safe_name(b.get("title") or "Quick note.txt")
-        if not text: raise ValueError("Write something first")
-        safety.create_snapshot("before-quick-note"); p=_unique_path(PROJECT_ROOT/"raw-dumps",title); p.write_text(text,encoding="utf-8")
-        return self._json({"ok":True,"path":str(p.relative_to(PROJECT_ROOT)),"message":"Note saved to Scribble Inbox."})
-    def _tag(self):
-        b=json.loads(self._body() or b"{}"); paths=b.get("paths") or []
-        if not paths: raise ValueError("Choose at least one brain dump")
-        tagged=[]; errors=[]; safety.create_snapshot("before-tagging")
-        for raw in paths:
-            try:
-                p=_find_file(raw)
-                if p.relative_to(PROJECT_ROOT).parts[0] not in {"raw-dumps","triage"}: raise ValueError("Tagging is for Inbox/triage material. Import or move the draft into manuscript analysis instead.")
-                meta=tagger.tag_file(str(p),use_llm=bool(b.get("use_llm",True)) and llm.llm_available())
-                tagged.append({"filename":p.name,"status":meta.get("status","seedling"),"word_count":meta.get("word_count",0),"characters":meta.get("characters",[]),"themes":meta.get("themes",[])})
-            except Exception as e: errors.append({"file":str(raw),"error":str(e)})
-        return self._json({"ok":True,"tagged":tagged,"errors":errors})
-    def _analyze(self):
-        b=json.loads(self._body() or b"{}"); paths=b.get("paths") or []; tools=[x for x in b.get("tools",[]) if x in ANALYZERS]
-        if not paths: raise ValueError("Choose at least one chapter or draft")
-        if not tools: raise ValueError("Choose at least one analysis tool")
-        safety.create_snapshot("before-analysis"); all_files=db.get_all_files(); results=[]; errors=[]
-        selected=[]
-        for raw in paths:
-            try:
-                p=_find_file(raw); folder=p.relative_to(PROJECT_ROOT).parts[0]
-                if folder not in {"chapters","drafts","final"}: raise ValueError("Analysis is reserved for chapters/drafts/final manuscript material. Tag raw brain dumps first.")
-                text=_body_text(p)
-                if len(text.split())<10: raise ValueError("Too short for meaningful analysis")
-                row={"filename":p.name,"results":{}}
-                for tool in tools:
-                    result=_run_tool(tool,text,all_files); _save_result(p,tool,result); row["results"][tool]=_json_safe(result)
-                selected.append({"label":p.stem,"path":str(p),"text":text}); results.append(row)
-            except Exception as e: errors.append({"file":str(raw),"error":str(e)})
-        # Cross-chapter comparisons are calculated only when multiple drafts are selected.
-        if len(selected)>1 and any(x in tools for x in ("voice_dna","cadence","motifs","anchors")):
-            comparison=chapter_comparison(selected); results.append({"filename":"Selected chapters — comparison","results":{"chapter_comparison":comparison}})
-            db.log_activity("chapter-comparison",None,"Compared selected chapters for voice/cadence/motif/anchor change")
-        return self._json({"ok":True,"results":results,"errors":errors})
-    def _backup(self):
-        return self._json({"ok":True,"path":safety.export_project_zip()})
-    def _html(self):
-        return self._send_html(APP_HTML)
-    def _send_html(self,text):
-        data=text.encode(); self.send_response(200); self.send_header("Content-Type","text/html; charset=utf-8"); self.send_header("Cache-Control","no-store"); self.send_header("Content-Length",str(len(data))); self.end_headers(); self.wfile.write(data)
+ server_version="AudhdScribbler/4.0"
+ def log_message(self,*a):pass
+ def send_json(self,v,status=200):
+  d=json.dumps(v,ensure_ascii=False).encode(); self.send_response(status); self.send_header("Content-Type","application/json; charset=utf-8"); self.send_header("Cache-Control","no-store"); self.send_header("Content-Length",str(len(d))); self.end_headers(); self.wfile.write(d)
+ def read_body(self):
+  n=int(self.headers.get("Content-Length","0"));
+  if n>60*1024*1024:raise ValueError("Request is too large")
+  return self.rfile.read(n)
+ def do_GET(self):
+  try:
+   p=urllib.parse.urlparse(self.path).path
+   if p=="/api/files":return self.send_json({"files":files(),"llm":llm.llm_status(),"snapshots":len(safety.recent_snapshots()),"version":"4.0"})
+   if p=="/api/tools":return self.send_json({"tools":{k:{"title":v[0],"group":v[1],"purpose":v[2]} for k,v in TOOLS.items()},"catalog":ANALYSIS_CATALOG})
+   if p=="/api/status":return self.send_json({"ok":True,"version":"4.0","llm":llm.llm_status()})
+   return self.html()
+  except Exception as e:return self.send_json({"ok":False,"error":str(e)},400)
+ def do_POST(self):
+  try:
+   p=urllib.parse.urlparse(self.path).path
+   if p=="/api/import":return self.import_files()
+   if p=="/api/note":return self.note()
+   if p=="/api/tag-preview":return self.preview()
+   if p=="/api/tag":return self.tag()
+   if p=="/api/analyze":return self.analyze()
+   if p=="/api/export":return self.export()
+   if p=="/api/backup":return self.send_json({"ok":True,"path":safety.export_project_zip()})
+   return self.send_json({"ok":False,"error":"Unknown action"},404)
+  except Exception as e:return self.send_json({"ok":False,"error":str(e)},400)
+ def import_files(self):
+  c=self.headers.get("Content-Type","")
+  if "multipart/form-data" not in c:raise ValueError("Invalid upload")
+  m=re.search(r"boundary=(?:\"([^\"]+)\"|([^;]+))",c)
+  if not m:raise ValueError("Upload boundary missing")
+  b=(m.group(1) or m.group(2)).encode(); raw=self.read_body(); parts=raw.split(b"--"+b); dest="raw-dumps"; incoming=[]
+  for part in parts:
+   sep=part.find(b"\r\n\r\n")
+   if sep<0:continue
+   h=part[:sep].decode("utf-8","replace"); content=part[sep+4:]
+   if content.endswith(b"\r\n"):content=content[:-2]
+   fm=re.search(r'filename="([^"]*)"',h)
+   if 'name="destination"' in h and not fm:
+    dest=content.decode("utf-8","replace").strip();continue
+   if fm:
+    fn=safe_name(fm.group(1))
+    if Path(fn).suffix.lower() in {".txt",".md",".text"}:incoming.append((fn,content))
+  if dest not in {"raw-dumps","chapters","drafts"}:raise ValueError("Invalid destination")
+  safety.create_snapshot("before-import"); target=PROJECT_ROOT/dest;target.mkdir(parents=True,exist_ok=True);saved=[]
+  for fn,cnt in incoming:
+   p=unique(target,fn);p.write_bytes(cnt);saved.append(str(p.relative_to(PROJECT_ROOT)))
+  return self.send_json({"ok":True,"saved":saved,"folder":dest,"message":f"Imported {len(saved)} file(s) into {dest}."})
+ def note(self):
+  b=json.loads(self.read_body() or b"{}");t=str(b.get("text","")).strip()
+  if not t:raise ValueError("Write something first")
+  safety.create_snapshot("before-quick-note");p=unique(PROJECT_ROOT/"raw-dumps",safe_name(b.get("title") or "Quick note.txt"));p.write_text(t,encoding="utf-8")
+  return self.send_json({"ok":True,"message":"Saved to Scribble Inbox.","path":str(p.relative_to(PROJECT_ROOT))})
+ def preview(self):
+  b=json.loads(self.read_body() or b"{}"); paths=b.get("paths") or []
+  if not paths:raise ValueError("Select at least one brain dump")
+  result=[]
+  for x in paths:
+   p=find_file(x)
+   if p.relative_to(PROJECT_ROOT).parts[0] not in {"raw-dumps","triage"}:raise ValueError("Tagging is only for Inbox/triage material")
+   result.append(tag_preview(p))
+  return self.send_json({"ok":True,"preview":result})
+ def tag(self):
+  b=json.loads(self.read_body() or b"{}");paths=b.get("paths") or []
+  if not paths:raise ValueError("Select at least one brain dump")
+  safety.create_snapshot("before-tagging");done=[];errors=[]
+  for x in paths:
+   try:
+    p=find_file(x)
+    if p.relative_to(PROJECT_ROOT).parts[0] not in {"raw-dumps","triage"}:raise ValueError("Tagging is only for Inbox/triage material")
+    done.append(tagger.tag_file(str(p),use_llm=bool(b.get("use_llm",True)) and llm.llm_available()))
+   except Exception as e:errors.append({"file":x,"error":str(e)})
+  return self.send_json({"ok":True,"tagged":done,"errors":errors})
+ def analyze(self):
+  b=json.loads(self.read_body() or b"{}");paths=b.get("paths") or [];tools=[x for x in b.get("tools",[]) if x in TOOLS]
+  if not paths:raise ValueError("Select at least one chapter or draft")
+  if not tools:raise ValueError("Select at least one analysis tool")
+  safety.create_snapshot("before-analysis");allf=db.get_all_files();results=[];selected=[]
+  for x in paths:
+   p=find_file(x);folder=p.relative_to(PROJECT_ROOT).parts[0]
+   if folder not in {"chapters","drafts","final"}:raise ValueError("Raw brain dumps cannot be analysed. Move/import them as chapters or drafts first.")
+   text=body(p);row={"filename":p.name,"results":{}}
+   if len(text.split())<10:raise ValueError(f"{p.name} is too short for meaningful analysis")
+   for tool in tools:
+    r=js(run_tool(tool,text,allf));db.save_analysis(str(p.resolve()),tool,r);row["results"][tool]=r
+   results.append(row);selected.append({"label":p.stem,"path":str(p),"text":text})
+  if len(selected)>1 and any(x in tools for x in ("voice_dna","cadence","motifs","anchors")):
+   results.append({"filename":"Cross-chapter comparison","results":{"chapter_comparison":js(chapter_comparison(selected))}})
+  return self.send_json({"ok":True,"results":results,"message":f"Completed {len(tools)} analysis tool(s) across {len(paths)} file(s)."})
+ def export(self):
+  b=json.loads(self.read_body() or b"{}");p=find_file(b.get("path"));kind=b.get("kind","docx")
+  fn={"docx":export_docx,"md":export_markdown,"txt":export_plain_text}.get(kind)
+  if not fn:raise ValueError("Unsupported export")
+  return self.send_json({"ok":True,"path":fn(str(p))})
+ def html(self):
+  d=APP.encode();self.send_response(200);self.send_header("Content-Type","text/html; charset=utf-8");self.send_header("Cache-Control","no-store");self.send_header("Content-Length",str(len(d)));self.end_headers();self.wfile.write(d)
 
 def run_server(open_browser=True):
-    for folder in FOLDERS: (PROJECT_ROOT/folder).mkdir(parents=True,exist_ok=True)
-    (PROJECT_ROOT/"data").mkdir(parents=True,exist_ok=True); db.get_db().close()
-    server=ThreadingHTTPServer(("127.0.0.1",0),Handler)
-    if open_browser:
-        import webbrowser; webbrowser.open(f"http://127.0.0.1:{server.server_port}/")
-    return server
+ for f in FOLDERS:(PROJECT_ROOT/f).mkdir(parents=True,exist_ok=True)
+ (PROJECT_ROOT/"data").mkdir(parents=True,exist_ok=True);db.get_db().close();s=ThreadingHTTPServer(("127.0.0.1",0),Handler)
+ if open_browser:
+  import webbrowser;webbrowser.open(f"http://127.0.0.1:{s.server_port}/")
+ return s
 
-APP_HTML=r'''<!doctype html><html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Audhd Scribbler</title><style>
-:root{--ink:#27302f;--muted:#717872;--paper:#faf9f5;--panel:#fff;--line:#e1ded6;--accent:#55777a;--soft:#edf2f0;--warn:#fff5df}*{box-sizing:border-box}body{margin:0;background:var(--paper);color:var(--ink);font:14px/1.55 'Segoe UI',Arial,sans-serif}.app{min-height:100vh}.top{background:#27302f;color:white;padding:18px 28px;display:flex;align-items:center;gap:22px;position:sticky;top:0;z-index:10}.brand{font:700 25px Georgia,serif;white-space:nowrap}.tagline{opacity:.7;font-size:12px}.top button{border:1px solid #5c6867;background:#34403f;color:#fff;border-radius:7px;padding:8px 11px;cursor:pointer}.top button:hover{background:#465352}.top .status{margin-left:auto;font-size:12px;opacity:.75}.layout{display:grid;grid-template-columns:220px 1fr;max-width:1450px;margin:auto;min-height:calc(100vh - 70px)}aside{border-right:1px solid var(--line);padding:24px 15px;background:#f5f3ee}aside h3{font-size:11px;text-transform:uppercase;letter-spacing:1.2px;color:var(--muted);margin:8px 10px}aside button{display:block;width:100%;text-align:left;border:0;background:transparent;padding:11px 12px;border-radius:8px;color:var(--ink);cursor:pointer}aside button.active,aside button:hover{background:#e5ebe9}main{padding:30px 38px;max-width:1100px;width:100%}h1{font:700 36px Georgia,serif;margin:0 0 8px}h2{font:700 25px Georgia,serif;margin:0 0 8px}.lead{color:var(--muted);max-width:760px}.view{display:none}.view.active{display:block}.cards{display:grid;grid-template-columns:repeat(3,1fr);gap:14px;margin:22px 0}.card{background:var(--panel);border:1px solid var(--line);border-radius:12px;padding:18px}.card h3{margin:0 0 5px;font:700 18px Georgia,serif}.card p{color:var(--muted);margin:5px 0 15px}.btn{border:1px solid var(--line);background:white;color:var(--ink);padding:9px 13px;border-radius:7px;cursor:pointer}.btn.primary{background:var(--accent);border-color:var(--accent);color:#fff}.btn.big{padding:11px 16px}.actions{display:flex;gap:9px;flex-wrap:wrap;margin:18px 0}.section{background:white;border:1px solid var(--line);border-radius:12px;padding:20px;margin:16px 0}.section h3{font:700 19px Georgia,serif;margin:0 0 5px}.muted{color:var(--muted)}.file-list{border:1px solid var(--line);border-radius:9px;background:white;max-height:440px;overflow:auto}.file{display:flex;gap:12px;align-items:center;padding:11px 13px;border-bottom:1px solid var(--line)}.file:last-child{border:0}.file input{width:18px;height:18px}.file .meta{margin-left:auto;color:var(--muted);font-size:12px}.pill{display:inline-block;padding:3px 7px;border-radius:99px;background:var(--soft);font-size:11px;margin-left:5px}.tools{display:grid;grid-template-columns:repeat(2,1fr);gap:10px}.tool{border:1px solid var(--line);border-radius:9px;padding:13px;background:white}.tool strong{display:block}.tool small{color:var(--muted)}textarea,input[type=text]{width:100%;border:1px solid var(--line);border-radius:8px;padding:11px;font:inherit;background:#fff}textarea{min-height:180px;resize:vertical}.modal{position:fixed;inset:0;background:#1d252488;display:none;align-items:center;justify-content:center;padding:25px;z-index:50}.modal.open{display:flex}.dialog{background:var(--paper);border-radius:14px;width:min(900px,96vw);max-height:90vh;overflow:auto;padding:26px;box-shadow:0 20px 70px #0004}.dialog .actions{justify-content:flex-end}.notice{padding:13px;border-radius:8px;background:var(--soft);margin:10px 0}.warning{background:var(--warn)}pre{white-space:pre-wrap;background:#f0eee8;padding:12px;border-radius:8px;font:12px/1.5 Consolas,monospace}.empty{padding:30px;text-align:center;color:var(--muted)}@media(max-width:850px){.layout{grid-template-columns:1fr}aside{border-right:0;border-bottom:1px solid var(--line);display:flex;overflow:auto}aside h3{display:none}aside button{white-space:nowrap;width:auto}main{padding:22px}.cards{grid-template-columns:1fr}.tools{grid-template-columns:1fr}.tagline{display:none}}
-</style></head><body><div class="app"><header class="top"><div class="brand">Audhd Scribbler</div><div class="tagline">A writer's workshop for messy ideas, manuscripts and patterns</div><button onclick="backup()">Backup project</button><span class="status" id="status">Ready</span></header><div class="layout"><aside><h3>Workspace</h3><button data-view="home" class="active">Home</button><button data-view="inbox">Scribble Inbox</button><button data-view="manuscript">Manuscript</button><button data-view="analysis">Analysis</button><button data-view="notes">Quick Notes</button><h3>Project</h3><button data-view="safety">Safety & exports</button></aside><main>
-<section id="home" class="view active"><h1>Your writing workspace</h1><p class="lead">One place for the messy stuff and the serious stuff — without confusing the two.</p><div class="cards"><div class="card"><h3>01 · Scribble Inbox</h3><p>Brain dumps, fragments and random thoughts. Tag them without judging the writing.</p><button class="btn primary" onclick="show('inbox');openImport('raw-dumps')">Import brain dumps</button></div><div class="card"><h3>02 · Manuscript</h3><p>Chapters and drafts are deliberately separate from raw material.</p><button class="btn primary" onclick="show('manuscript');openImport('chapters')">Import chapter / draft</button></div><div class="card"><h3>03 · Analysis</h3><p>Choose the exact draft and the exact question. Nothing is analysed by accident.</p><button class="btn primary" onclick="show('analysis')">Open analysis</button></div></div><div class="section"><h3>The rule</h3><p><strong>Raw material gets organised. Drafts get analysed.</strong> Scribbler never silently turns a brain dump into a manuscript or treats messy notes as failed prose.</p></div></section>
-<section id="inbox" class="view"><h1>Scribble Inbox</h1><p class="lead">Your safe landing place for unfinished thoughts, brain dumps, notes and fragments.</p><div class="actions"><button class="btn primary" onclick="openImport('raw-dumps')">＋ Import brain dumps</button><button class="btn" onclick="openTag()">Tag selected</button><button class="btn" onclick="openNote()">＋ Write a quick note</button></div><div class="section"><h3>Inbox material</h3><p class="muted">Tagging may add metadata, but it does not rewrite the body of your writing.</p><div id="inboxFiles" class="file-list"></div></div></section>
-<section id="manuscript" class="view"><h1>Manuscript</h1><p class="lead">Only material you consider a chapter or draft belongs here. This is what the analysis suite works on.</p><div class="actions"><button class="btn primary" onclick="openImport('chapters')">＋ Import chapter</button><button class="btn" onclick="openImport('drafts')">＋ Import draft</button><button class="btn" onclick="show('analysis')">Analyse selected</button></div><div class="section"><h3>Chapters & drafts</h3><div id="manuscriptFiles" class="file-list"></div></div></section>
-<section id="analysis" class="view"><h1>Analysis</h1><p class="lead">Separate tools for separate questions. Run one, several, or the cautious recommended set.</p><div class="section"><h3>1. Choose your writing</h3><div id="analysisFiles" class="file-list"></div></div><div class="section"><h3>2. Choose your analysis</h3><div class="tools" id="tools"></div><div class="actions"><button class="btn" onclick="selectTools(true)">Select recommended</button><button class="btn" onclick="selectTools(false)">Clear</button><button class="btn primary big" onclick="runAnalysis()">Run selected analysis</button></div><div class="notice warning"><strong>Run all is not a default.</strong> Some diagnostics overlap or can be misleading when deliberate voice, genre, POV or author growth is involved. Scribbler flags patterns; you decide whether they matter.</div></div><div class="section"><h3>Results</h3><div id="results"><div class="empty">Run an analysis to see results here.</div></div></div></section>
-<section id="notes" class="view"><h1>Quick Notes</h1><p class="lead">A little scratchpad for the thought that arrives while you're doing something else.</p><div class="section"><input id="noteTitle" type="text" placeholder="Optional title"><br><br><textarea id="noteText" placeholder="Type the thought. Don't organise it yet."></textarea><div class="actions"><button class="btn primary" onclick="saveNote()">Save to Scribble Inbox</button></div></div></section>
-<section id="safety" class="view"><h1>Safety & exports</h1><p class="lead">Scribbler treats your writing as valuable source material.</p><div class="section"><h3>Before important changes</h3><p>Tagging, importing and analysis create a local safety snapshot first. Previous analysis results are retained rather than silently replaced.</p><button class="btn primary" onclick="backup()">Create portable project backup</button></div><div class="section"><h3>Export rule</h3><p>Exports never silently overwrite an existing file. A new numbered copy is created instead.</p><p class="muted">Project data stays local. The browser is only the interface.</p></div></section>
-</main></div></div><div id="modal" class="modal"><div id="dialog" class="dialog"></div></div><input id="upload" type="file" multiple accept=".txt,.md,.text" hidden><script>
-let files=[];const statusEl=document.getElementById('status'),modal=document.getElementById('modal'),dialog=document.getElementById('dialog');const esc=s=>String(s??'').replace(/[&<>"']/g,m=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[m]));const setStatus=s=>statusEl.textContent=s;const show=id=>{document.querySelectorAll('.view').forEach(x=>x.classList.remove('active'));document.getElementById(id).classList.add('active');document.querySelectorAll('aside button[data-view]').forEach(x=>x.classList.toggle('active',x.dataset.view===id));render();};document.querySelectorAll('aside button[data-view]').forEach(x=>x.onclick=()=>show(x.dataset.view));const openModal=h=>{dialog.innerHTML=h;modal.classList.add('open')};const closeModal=()=>modal.classList.remove('open');modal.onclick=e=>{if(e.target===modal)closeModal()};
-async function load(){const j=await (await fetch('/api/files')).json();files=j.files||[];return j}function folderFiles(folder){return files.filter(x=>x.folder===folder)}function listHTML(items,scope){if(!items.length)return '<div class="empty">Nothing here yet.</div>';return items.map(f=>`<label class="file"><input type="checkbox" data-scope="${scope}" value="${esc(f.path)}"><span><strong>${esc(f.filename)}</strong><br><span class="muted">${f.word_count||0} words · ${esc(f.status)}${f.last_analyzed?` · analysed ${esc(f.last_analyzed)}`:''}</span></span><span class="meta">${esc(f.folder)}</span></label>`).join('')}function selected(scope){return [...document.querySelectorAll(`input[data-scope="${scope}"]:checked`)].map(x=>x.value)}
-function render(){document.getElementById('inboxFiles').innerHTML=listHTML([...folderFiles('raw-dumps'),...folderFiles('triage')],'inbox');document.getElementById('manuscriptFiles').innerHTML=listHTML([...folderFiles('chapters'),...folderFiles('drafts'),...folderFiles('final')],'manuscript');document.getElementById('analysisFiles').innerHTML=listHTML([...folderFiles('chapters'),...folderFiles('drafts'),...folderFiles('final')],'analysis');document.getElementById('tools').innerHTML=TOOLS.map(t=>`<label class="tool"><input type="checkbox" class="toolbox" value="${t[0]}"> <strong>${t[1]}</strong><small>${t[3]} · Best on ${t[2]}</small></label>`).join('')}
-const TOOLS=[['craft','Craft & Rhythm','draft','Sentence rhythm, balance and craft signals.'],['voice','Voice & Tense','draft','Narrator voice, tense and narrative stance.'],['characters','Characters & Relationships','draft','Presence, relationships and character movement.'],['continuity','Continuity & Timeline','draft','Chronology, recurring facts and continuity signals.'],['themes','Themes & Emotional Arc','draft','Themes, motifs and emotional movement.'],['cadence','Cadence & Rhythm','draft','Sentence-length movement, pauses and contrast.'],['motifs','Motifs & Echoes','draft','Recurring words and phrases across the selected writing.'],['anchors','Structural Anchors','draft','Repeated openings, endings and textual anchors.'],['voice_dna','Voice DNA','draft','Compare against approved personal writing samples.'],['editor','Editorial Patterns','near-final','Clarity, redundancy and memoir-specific editorial signals.']];
-async function openImport(dest){openModal(`<h2>Import ${dest==='raw-dumps'?'brain dumps':'chapters / drafts'}</h2><p class="muted">Choose files from your computer. Scribbler copies them into the selected workspace and leaves your originals untouched.</p><div class="section"><label><input type="radio" name="dest" value="raw-dumps" ${dest==='raw-dumps'?'checked':''}> Scribble Inbox</label><br><label><input type="radio" name="dest" value="chapters" ${dest==='chapters'?'checked':''}> Chapters</label><br><label><input type="radio" name="dest" value="drafts"> Drafts</label></div><div class="actions"><button class="btn" onclick="closeModal()">Cancel</button><button class="btn primary" onclick="chooseUpload()">Choose files</button></div>`)}function chooseUpload(){const i=document.getElementById('upload');i.value='';i.onchange=async()=>{if(!i.files.length)return;const dest=document.querySelector('input[name="dest"]:checked').value;const fd=new FormData();fd.append('destination',dest);[...i.files].forEach(f=>fd.append('files',f));setStatus('Saving copies…');const j=await(await fetch('/api/import',{method:'POST',body:fd})).json();if(!j.ok)return alert(j.error);await load();render();closeModal();setStatus('✓ '+j.message);show(dest==='raw-dumps'?'inbox':'manuscript')};i.click()}
-function openTag(){const p=selected('inbox');if(!p.length)return alert('Select one or more brain dumps first.');openModal(`<h2>Tag selected material</h2><p>Your prose will not be rewritten. Scribbler will create a safety snapshot before adding/updating tags.</p><div class="notice">Selected: ${p.length} item(s)</div><div class="actions"><button class="btn" onclick="closeModal()">Cancel</button><button class="btn primary" onclick="runTag(${JSON.stringify(p)})">Tag and save</button></div>`)}async function runTag(p){closeModal();if(!confirm('Tag these brain dumps now?\n\nA safety snapshot will be created first.'))return;setStatus('Tagging…');const j=await(await fetch('/api/tag',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({paths:p,use_llm:true})})).json();await load();render();setStatus(j.ok?'✓ Tagging saved':'Tagging failed');openModal(`<h2>Tagging complete</h2><div class="notice">${j.tagged.length} item(s) processed. Previous project state was preserved.</div>${j.errors.length?`<div class="notice warning">${esc(JSON.stringify(j.errors))}</div>`:''}<div class="actions"><button class="btn primary" onclick="closeModal()">Done</button></div>`)}
-function selectTools(v){document.querySelectorAll('.toolbox').forEach((x,i)=>x.checked=v&&(i<7))}async function runAnalysis(){const p=selected('analysis'),t=[...document.querySelectorAll('.toolbox:checked')].map(x=>x.value);if(!p.length)return alert('Select one or more chapters/drafts first.');if(!t.length)return alert('Select at least one analysis tool.');if(!confirm(`Run ${t.length} analysis tool(s) on ${p.length} file(s)?\n\nA safety snapshot will be created first. Previous results are retained.`))return;setStatus('Analysing…');const j=await(await fetch('/api/analyze',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({paths:p,tools:t})})).json();await load();render();setStatus(j.ok?'✓ Analysis saved':'Analysis failed');let out='';j.results.forEach(x=>{out+=`<div class="section"><h3>${esc(x.filename)}</h3><pre>${esc(JSON.stringify(x.results,null,2))}</pre></div>`});document.getElementById('results').innerHTML=out||'<div class="empty">No results returned.</div>';if(j.errors.length)document.getElementById('results').innerHTML+=`<div class="notice warning">${esc(JSON.stringify(j.errors))}</div>`}
-async function saveNote(){const text=document.getElementById('noteText').value.trim();if(!text)return alert('Write something first.');setStatus('Saving note…');const j=await(await fetch('/api/note',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({title:document.getElementById('noteTitle').value,text})})).json();if(!j.ok)return alert(j.error);document.getElementById('noteText').value='';document.getElementById('noteTitle').value='';await load();render();setStatus('✓ Note saved to Scribble Inbox');show('inbox')}
-async function backup(){setStatus('Creating backup…');const j=await(await fetch('/api/backup',{method:'POST'})).json();setStatus(j.ok?'✓ Backup created':'Backup failed');if(j.ok)alert('Portable project backup created:\n\n'+j.path)}load().then(render)
+APP=r'''<!doctype html><html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Audhd Scribbler 4.0</title><style>
+:root{--ink:#28312f;--muted:#707975;--paper:#f8f7f3;--panel:#fff;--line:#ddd9d0;--accent:#4f7375;--soft:#e9efed;--danger:#fff0ed}*{box-sizing:border-box}body{margin:0;background:var(--paper);color:var(--ink);font:14px/1.5 Segoe UI,Arial,sans-serif}.top{height:70px;background:#28312f;color:white;display:flex;align-items:center;padding:0 28px;gap:20px;position:sticky;top:0;z-index:5}.brand{font:bold 24px Georgia}.sub{opacity:.65;font-size:12px}.top .right{margin-left:auto;display:flex;gap:10px;align-items:center}.top button{background:#374442;color:#fff;border:1px solid #5d6967;border-radius:7px;padding:8px 12px}.app{display:grid;grid-template-columns:230px minmax(0,1100px);max-width:1400px;margin:auto;min-height:calc(100vh - 70px)}aside{background:#f0eee8;border-right:1px solid var(--line);padding:24px 14px}aside h4{text-transform:uppercase;font-size:10px;letter-spacing:1.4px;color:var(--muted);margin:12px 10px 6px}nav button{display:block;width:100%;border:0;background:transparent;text-align:left;padding:11px 12px;border-radius:8px;color:var(--ink);cursor:pointer}nav button.active,nav button:hover{background:#dfe8e5}main{padding:32px 38px}.view{display:none}.view.active{display:block}h1{font:700 35px Georgia;margin:0 0 7px}h2{font:700 24px Georgia;margin:0 0 7px}h3{font:700 18px Georgia;margin:0 0 5px}.lead{color:var(--muted);max-width:780px}.grid{display:grid;grid-template-columns:repeat(3,1fr);gap:14px;margin:22px 0}.card,.panel{background:var(--panel);border:1px solid var(--line);border-radius:12px;padding:18px}.card p,.muted{color:var(--muted)}.panel{margin:16px 0}.actions{display:flex;gap:9px;flex-wrap:wrap;margin:16px 0}.btn{border:1px solid var(--line);background:#fff;padding:9px 13px;border-radius:7px;cursor:pointer}.primary{background:var(--accent);color:#fff;border-color:var(--accent)}.filelist{border:1px solid var(--line);border-radius:9px;background:#fff;max-height:420px;overflow:auto}.file{display:flex;gap:12px;align-items:center;padding:11px;border-bottom:1px solid var(--line)}.file:last-child{border:0}.file input{width:18px;height:18px}.file .meta{margin-left:auto;color:var(--muted);font-size:12px}.tools{display:grid;grid-template-columns:repeat(2,1fr);gap:10px}.tool{border:1px solid var(--line);border-radius:9px;padding:13px;background:#fff;cursor:pointer}.tool:has(input:checked){border-color:var(--accent);background:var(--soft)}.tool strong{display:block}.tool small{color:var(--muted)}textarea,input[type=text]{width:100%;padding:11px;border:1px solid var(--line);border-radius:8px;font:inherit}.notearea{min-height:220px}.results{background:#fff;border:1px solid var(--line);border-radius:9px;padding:15px;max-height:620px;overflow:auto}pre{white-space:pre-wrap;background:#f0eee8;padding:12px;border-radius:7px;font:12px Consolas}.tagbox{display:grid;grid-template-columns:repeat(3,1fr);gap:10px}.tag{background:var(--soft);padding:10px;border-radius:8px}.notice{padding:12px;border-radius:8px;background:var(--soft);margin:10px 0}.danger{background:var(--danger)}.empty{text-align:center;padding:30px;color:var(--muted)}.version{font-size:11px;opacity:.55}@media(max-width:850px){.app{grid-template-columns:1fr}aside{border-right:0;border-bottom:1px solid var(--line);padding:8px;overflow:auto}nav{display:flex;gap:4px}nav button{white-space:nowrap;width:auto}main{padding:22px}.grid{grid-template-columns:1fr}.tools,.tagbox{grid-template-columns:1fr}.sub{display:none}}
+</style></head><body><header class="top"><div class="brand">Audhd Scribbler</div><div class="sub">one workspace for ideas, writing & analysis</div><div class="right"><span id="status">Ready</span><button onclick="backup()">Backup</button></div></header><div class="app"><aside><nav><h4>Workspace</h4><button data-v="home" class="active">Home</button><button data-v="inbox">Scribble Inbox</button><button data-v="manuscript">Manuscript</button><button data-v="analysis">Analysis Suite</button><h4>Utilities</h4><button data-v="notes">Quick Note</button><button data-v="exports">Export & Safety</button></nav><div class="version">Scribbler 4.0</div></aside><main>
+<section id="home" class="view active"><h1>Your writing workshop</h1><p class="lead">Messy material and serious writing live together without being confused. Nothing is analysed until you choose it.</p><div class="grid"><div class="card"><h3>Scribble Inbox</h3><p>Import dumps or type a thought. Tag first; don't polish prematurely.</p><button class="btn primary" onclick="openImport('raw-dumps')">Import brain dumps</button></div><div class="card"><h3>Manuscript</h3><p>Import chapters and drafts into the material that analysis is allowed to touch.</p><button class="btn primary" onclick="openImport('chapters')">Import chapter / draft</button></div><div class="card"><h3>Analysis Suite</h3><p>Pick the exact writing and exact questions. Individual tools plus a cautious run-all.</p><button class="btn primary" onclick="go('analysis')">Open suite</button></div></div><div class="panel"><h3>The simple rule</h3><p><b>Inbox gets organised. Manuscript gets analysed.</b> Your source prose is never silently rewritten by analysis.</p></div></section>
+<section id="inbox" class="view"><h1>Scribble Inbox</h1><p class="lead">Raw thoughts, voice transcripts, fragments and half-formed ideas.</p><div class="actions"><button class="btn primary" onclick="openImport('raw-dumps')">＋ Import raw dumps</button><button class="btn" onclick="go('notes')">＋ Quick note</button><button class="btn" onclick="previewTags()">Preview tags</button><button class="btn" onclick="applyTags()">Apply tags</button></div><div class="panel"><div id="inboxList" class="filelist"></div></div></section>
+<section id="manuscript" class="view"><h1>Manuscript</h1><p class="lead">Chapters, drafts and final material. This is the analysis side of Scribbler.</p><div class="actions"><button class="btn primary" onclick="openImport('chapters')">＋ Import chapter</button><button class="btn" onclick="openImport('drafts')">＋ Import draft</button><button class="btn" onclick="go('analysis')">Analyse selected</button></div><div class="panel"><div id="manuscriptList" class="filelist"></div></div></section>
+<section id="analysis" class="view"><h1>Analysis Suite</h1><p class="lead">Every tool is explicit. Some are deterministic; AI is used only where interpretation adds value.</p><div class="panel"><h3>1 · Choose manuscript material</h3><div id="analysisList" class="filelist"></div></div><div class="panel"><h3>2 · Choose tools</h3><div id="tools" class="tools"></div><div class="actions"><button class="btn" onclick="recommended()">Recommended</button><button class="btn" onclick="selectAllTools()">Select all</button><button class="btn" onclick="clearTools()">Clear</button><button class="btn primary" onclick="runAnalysis()">Run selected</button></div><div class="notice">Run All is available as <b>Select all</b>, but Scribbler does not pretend every diagnostic is compatible. Review the tools you want first; findings are observations, not instructions.</div></div><div class="panel"><h3>Results</h3><div id="results" class="results"><div class="empty">Choose writing and tools, then run.</div></div></div></section>
+<section id="notes" class="view"><h1>Quick Note</h1><p class="lead">A scratchpad for the thought that arrives before you have time to organise it.</p><div class="panel"><input id="noteTitle" type="text" placeholder="Optional title"><br><br><textarea id="noteText" class="notearea" placeholder="Write the thought here…"></textarea><div class="actions"><button class="btn primary" onclick="saveNote()">Save to Scribble Inbox</button></div></div></section>
+<section id="exports" class="view"><h1>Export & Safety</h1><p class="lead">Backups and exports are copies. Existing files are never silently overwritten.</p><div class="panel"><h3>Portable project backup</h3><p class="muted">Includes writing folders, database and manifest.</p><button class="btn primary" onclick="backup()">Create project backup ZIP</button></div><div class="panel"><h3>Export selected manuscript</h3><p class="muted">Select one manuscript file below, then choose a format.</p><div id="exportList" class="filelist"></div><div class="actions"><button class="btn" onclick="exportFile('docx')">DOCX</button><button class="btn" onclick="exportFile('md')">Markdown</button><button class="btn" onclick="exportFile('txt')">Plain text</button></div></div><div class="panel"><h3>Safety</h3><p>Important operations create a local snapshot first. Analysis history is retained. Tagging never intentionally changes the prose body.</p></div></section>
+</main></div><input id="upload" type="file" multiple accept=".txt,.md,.text" hidden><div id="modal"></div><script>
+let DATA={files:[]},status=document.getElementById('status');const esc=s=>String(s??'').replace(/[&<>"']/g,m=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[m]));const setStatus=x=>status.textContent=x;function go(id){document.querySelectorAll('.view').forEach(x=>x.classList.toggle('active',x.id===id));document.querySelectorAll('nav button[data-v]').forEach(x=>x.classList.toggle('active',x.dataset.v===id));render()}document.querySelectorAll('nav button[data-v]').forEach(x=>x.onclick=()=>go(x.dataset.v));async function load(){DATA=await(await fetch('/api/files')).json()}function by(folders){return DATA.files.filter(x=>folders.includes(x.folder))}function list(items,scope){if(!items.length)return '<div class="empty">Nothing here yet.</div>';return items.map(x=>`<label class="file"><input type="checkbox" data-s="${scope}" value="${esc(x.path)}"><span><b>${esc(x.filename)}</b><br><span class="muted">${x.word_count||0} words · ${esc(x.status)}${x.last_analyzed?' · analysed':''}</span></span><span class="meta">${esc(x.folder)}</span></label>`).join('')}function selected(s){return [...document.querySelectorAll(`input[data-s="${s}"]:checked`)].map(x=>x.value)}function render(){document.getElementById('inboxList').innerHTML=list(by(['raw-dumps','triage']),'inbox');document.getElementById('manuscriptList').innerHTML=list(by(['chapters','drafts','final']),'manuscript');document.getElementById('analysisList').innerHTML=list(by(['chapters','drafts','final']),'analysis');document.getElementById('exportList').innerHTML=list(by(['chapters','drafts','final']),'export');renderTools()}const TOOLS=[['craft','Craft & Rhythm','Prose'],['voice','Voice & Tense','Prose'],['characters','Characters & Relationships','Story'],['continuity','Continuity & Timeline','Story'],['themes','Themes & Emotional Arc','Story'],['editor','Editorial Patterns','Editorial'],['repetition','Repetition & Echoes','Prose'],['pacing','Pacing & Momentum','Structure'],['structure','Structure & Chapter Purpose','Structure'],['memoir','Memoir Lens','Memoir'],['reader','Reader Experience','Editorial'],['research','Research & Fact Flags','Accuracy'],['cadence','Cadence & Rhythm','Prose'],['motifs','Motifs & Echoes','Story'],['anchors','Structural Anchors','Structure'],['voice_dna','Voice DNA','Writer'],['reader_perception','Reader Perception','Writer']];function renderTools(){document.getElementById('tools').innerHTML=TOOLS.map(t=>`<label class="tool"><input type="checkbox" class="toolbox" value="${t[0]}"><strong>${t[1]}</strong><small>${t[2]} · ${esc((DATA.catalog||{})[t[0]]?.purpose||'Evidence-led analysis tool.')}</small></label>`).join('')}async function openImport(defaultDest){const dest=prompt('Import destination: type INBOX, CHAPTERS or DRAFTS',defaultDest==='raw-dumps'?'INBOX':'CHAPTERS');if(!dest)return;let d=dest.toLowerCase();d=d==='inbox'?'raw-dumps':d==='chapters'?'chapters':d==='drafts'?'drafts':null;if(!d)return alert('Use INBOX, CHAPTERS or DRAFTS.');let i=document.getElementById('upload');i.value='';i.onchange=async()=>{if(!i.files.length)return;let fd=new FormData();fd.append('destination',d);[...i.files].forEach(f=>fd.append('files',f));setStatus('Saving copies…');let j=await(await fetch('/api/import',{method:'POST',body:fd})).json();if(!j.ok)return alert(j.error);await load();render();setStatus('✓ '+j.message);go(d==='raw-dumps'?'inbox':'manuscript')};i.click()}function previewTags(){let p=selected('inbox');if(!p.length)return alert('Select brain dumps first.');fetch('/api/tag-preview',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({paths:p})}).then(r=>r.json()).then(j=>{if(!j.ok)return alert(j.error);document.getElementById('results').innerHTML=j.preview.map(x=>`<div class="panel"><h3>${esc(x.filename)}</h3><div class="tagbox">${[['Voice',x.voice],['Era',x.era],['Emotion',x.emotional_register],['Themes',(x.themes||[]).join(', ')],['Characters',(x.characters||[]).join(', ')],['Places',(x.places||[]).join(', ')],['Sensory',(x.sensory||[]).join(', ')]].map(a=>`<div class="tag"><b>${esc(a[0])}</b><br>${esc(a[1]||'—')}</div>`).join('')}</div></div>`).join('');setStatus('Tag preview ready')})}async function applyTags(){let p=selected('inbox');if(!p.length)return alert('Select brain dumps first.');if(!confirm(`Tag ${p.length} item(s)? A safety snapshot will be created first.`))return;let j=await(await fetch('/api/tag',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({paths:p,use_llm:true})})).json();if(!j.ok)return alert(j.error);await load();render();setStatus(`✓ Tagged ${j.tagged.length} item(s)`);alert(`Tagging saved. ${j.tagged.length} item(s) processed. Your prose was not rewritten.`)}function toolSelected(){return [...document.querySelectorAll('.toolbox:checked')].map(x=>x.value)}function clearTools(){document.querySelectorAll('.toolbox').forEach(x=>x.checked=false)}function selectAllTools(){document.querySelectorAll('.toolbox').forEach(x=>x.checked=true)}function recommended(){clearTools();['craft','voice','characters','continuity','themes','cadence','motifs','anchors'].forEach(k=>{let x=document.querySelector(`.toolbox[value="${k}"]`);if(x)x.checked=true})}async function runAnalysis(){let p=selected('analysis'),t=toolSelected();if(!p.length)return alert('Select one or more chapters/drafts first.');if(!t.length)return alert('Select at least one analysis tool.');if(!confirm(`Run ${t.length} analysis tool(s) across ${p.length} file(s)? A safety snapshot will be created first.`))return;setStatus('Analysing…');let j=await(await fetch('/api/analyze',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({paths:p,tools:t})})).json();if(!j.ok)return alert(j.error);document.getElementById('results').innerHTML=j.results.map(r=>`<div class="panel"><h3>${esc(r.filename)}</h3>${Object.entries(r.results).map(([k,v])=>`<details open><summary><b>${esc(k)}</b></summary><pre>${esc(JSON.stringify(v,null,2))}</pre></details>`).join('')}</div>`).join('');setStatus('✓ '+j.message)}async function saveNote(){let text=document.getElementById('noteText').value.trim();if(!text)return alert('Write something first.');let j=await(await fetch('/api/note',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({title:document.getElementById('noteTitle').value,text})})).json();if(!j.ok)return alert(j.error);document.getElementById('noteText').value='';document.getElementById('noteTitle').value='';await load();render();setStatus('✓ Saved to Scribble Inbox');go('inbox')}async function backup(){setStatus('Creating backup…');let j=await(await fetch('/api/backup',{method:'POST'})).json();if(!j.ok)return alert(j.error);setStatus('✓ Backup created');alert('Portable project backup created:\n'+j.path)}async function exportFile(kind){let p=selected('export')[0];if(!p)return alert('Select one manuscript file first.');let j=await(await fetch('/api/export',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({path:p,kind})})).json();if(!j.ok)return alert(j.error);setStatus('✓ Export created');alert('Export created:\n'+j.path)}load().then(render).catch(e=>{status.textContent='Load error';alert(e)});
 </script></body></html>'''
