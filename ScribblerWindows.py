@@ -1,14 +1,26 @@
 """Console-free Windows launcher for the unified Audhd Scribbler workspace."""
 from pathlib import Path
-import os, sys, traceback, ctypes
+import os, sys, traceback, ctypes, tempfile, shutil
 
 APP_HOME = Path(os.environ.get("LOCALAPPDATA", str(Path.home()))) / "Audhd Scribbler"
 APP_HOME.mkdir(parents=True, exist_ok=True)
 LOG_PATH = APP_HOME / "startup-error.log"
 
 
+def clear_packaged_caches(root: Path):
+    """Remove only disposable packaged Python caches; never touch project data."""
+    for base in (root,):
+        for p in base.rglob("__pycache__"):
+            if p.is_dir():
+                shutil.rmtree(p, ignore_errors=True)
+        for p in base.rglob("*.pyc"):
+            try: p.unlink()
+            except OSError: pass
+
+
 def main():
     root = Path(__file__).resolve().parent
+    clear_packaged_caches(root)
     sys.path.insert(0, str(root))
     from scribbler import webapp
     server = webapp.run_server(open_browser=True)
@@ -33,4 +45,3 @@ if __name__ == "__main__":
             )
         except Exception:
             pass
-        raise
