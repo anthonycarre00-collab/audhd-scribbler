@@ -43,9 +43,19 @@ SENSORY_CATEGORIES = {
 AUDHD_THEMES = {"diagnosis": ["diagnosis", "diagnosed", "diagnostic", "assessment", "evaluated", "tested", "labeled", "identified"], "masking": ["masking", "mask", "pretending", "passing", "camouflage", "camouflaging", "fake", "pretend", "perform", "performing", "script", "scripting"], "sensory": ["sensory", "overload", "overwhelm", "overstimulated", "understimulated", "stim", "stimming", "sensory diet", "dysregulation", "regulated", "dysregulated"], "meltdown": ["meltdown", "meltdowns", "shutdown", "shut down", "frozen", "freeze", "froze", "flooded", "incapacitated"], "special_interest": ["special interest", "hyperfixation", "hyperfixated", "obsessed", "obsession", "deep dive", "rabbit hole", "infodump", "info dump", "passionate about"], "executive_function": ["executive function", "task initiation", "working memory", "planning", "prioritizing", "overwhelmed by", "paralyzed", "stuck", "frozen", "can't start", "can't begin"], "stimming": ["stimming", "stim", "rocking", "flapping", "humming", "tapping", "fidget", "fidgeting", "repetitive", "pace", "pacing", "spinning"], "burnout": ["burnout", "burned out", "burnt out", "exhausted", "depleted", "drained", "empty", "hollow", "numb", "checked out", "dissociated"], "routine": ["routine", "ritual", "same", "change", "transition", "transitioning", "disruption", "unexpected", "surprise", "sameness", "consistent"], "social": ["social", "socializing", "party", "gatherings", "small talk", "eye contact", "cue", "cues", "social cues", "norms", "unwritten rules", "etiquette"], "identity": ["identity", "autistic", "adhd", "audhd", "neurodivergent", "neurodiversity", "neurotypical", "disabled", "difference", "different", "normal", "normalcy"], "grief": ["grief", "mourning", "loss", "lost", "death", "died", "gone", "funeral", "memorial", "anniversary", "missing", "miss"], "shame": ["shame", "ashamed", "embarrassed", "humiliated", "stupid", "lazy", "broken", "defective", "wrong", "failure", "failing"]}
 WEAK_WORDS = ["just", "really", "very", "suddenly", "somewhat", "quite", "rather", "actually", "basically", "literally", "simply", "totally", "ultimately", "virtually", "practically", "seemingly", "apparently", "perhaps", "maybe", "kind of", "sort of", "a bit", "slightly", "almost", "nearly", "began to", "started to", "proceeded to", "in order to", "due to the fact that", "at this point in time", "the fact that", "it is important to note that"]
 FILTER_WORDS = ["saw", "heard", "felt", "noticed", "realized", "knew", "thought", "wondered", "looked", "watched", "seemed", "appeared", "decided", "remembered", "recognized", "touched", "smelled", "tasted", "observed", "perceived", "understood", "grasped", "sensed"]
-# Referenced by tagger.py. Keep this lightweight and data-only so packaged startup is deterministic.
 ANACHRONISM_WATCHLIST = {
     "technology": ["smartphone", "iphone", "android", "facebook", "instagram", "whatsapp", "twitter", "tiktok", "google"],
     "media": ["streaming", "netflix", "spotify", "podcast"],
     "modern_terms": ["email", "emailing", "internet", "wifi", "wi-fi", "app", "online"]
+}
+# Required by the low-shame feedback layer. Kept here as data only so analyzers remain import-safe.
+WORD_SWAPS = {
+    "bad": "notable",
+    "wrong": "different",
+    "failure": "attempt",
+    "failed": "did not work yet",
+    "lazy": "low-energy",
+    "stupid": "unclear",
+    "terrible": "challenging",
+    "awful": "rough",
 }
