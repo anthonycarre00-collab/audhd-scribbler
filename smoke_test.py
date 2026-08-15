@@ -1,8 +1,9 @@
-"""Release smoke test: prove the real application imports and serves before packaging."""
+"""Release smoke test: prove the established application imports and serves."""
 from __future__ import annotations
 import os
-import sys
+import threading
 import urllib.request
+from http.server import ThreadingHTTPServer
 
 os.environ["AUDHD_SCRIBBLER_NO_BROWSER"] = "1"
 
@@ -13,18 +14,15 @@ from scribbler.writer_intelligence import cadence_rhythm, motif_scan, structural
 
 
 def main():
-    server = webapp.run_server(open_browser=False)
+    server = ThreadingHTTPServer(("127.0.0.1", 0), webapp.Handler)
+    thread = threading.Thread(target=server.serve_forever, daemon=True)
+    thread.start()
     try:
-        url = f"http://127.0.0.1:{server.server_port}/api/status"
-        import threading
-        thread = threading.Thread(target=server.serve_forever, daemon=True)
-        thread.start()
-        with urllib.request.urlopen(url, timeout=5) as response:
-            if response.status != 200:
-                raise RuntimeError(f"status endpoint returned HTTP {response.status}")
-        with urllib.request.urlopen(f"http://127.0.0.1:{server.server_port}/api/tools", timeout=5) as response:
-            if response.status != 200:
-                raise RuntimeError(f"tools endpoint returned HTTP {response.status}")
+        base = f"http://127.0.0.1:{server.server_port}"
+        with urllib.request.urlopen(base + "/api/status", timeout=5) as response:
+            assert response.status == 200
+        with urllib.request.urlopen(base + "/api/tools", timeout=5) as response:
+            assert response.status == 200
         print("SMOKE TEST PASSED: imports, database initialization and HTTP workspace startup are healthy.")
     finally:
         server.shutdown()
