@@ -27,6 +27,9 @@ jobs:
       - name: Run application smoke test before packaging
         shell: pwsh
         run: python smoke_test.py
+      - name: Run functional tagging and analysis gate
+        shell: pwsh
+        run: python functional_smoke_test.py
       - name: Build console-free interactive executable
         shell: pwsh
         run: |
