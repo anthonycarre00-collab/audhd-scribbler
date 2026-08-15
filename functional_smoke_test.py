@@ -8,7 +8,7 @@ import tempfile
 import time
 from pathlib import Path
 
-HOME = Path(tempfile.mkdtemp(prefix="scribbler-smoke-") )
+HOME = Path(tempfile.mkdtemp(prefix="scribbler-smoke-")).resolve()
 os.environ["AUDHD_SCRIBBLER_HOME"] = str(HOME)
 os.environ["AUDHD_SCRIBBLER_NO_BROWSER"] = "1"
 
@@ -26,7 +26,7 @@ Years later, looking back, I still remember that afternoon. Perhaps I remember s
 
 def assert_quality(key, result):
     assert isinstance(result, dict) and result, f"Analysis tool returned no result: {key}"
-    if key in {"repetition","pacing","structure","memoir","reader","research"}:
+    if key in {"repetition", "pacing", "structure", "memoir", "reader", "research"}:
         assert result.get("advice"), f"Analysis tool returned no actionable advice: {key}"
     if key == "reader_perception":
         assert "status" in result or "author_perception" in result or "character_perceptions" in result
@@ -35,16 +35,20 @@ def assert_quality(key, result):
 def main():
     (HOME / "raw-dumps").mkdir(parents=True)
     (HOME / "chapters").mkdir(parents=True)
-    raw = HOME / "raw-dumps" / "brain.txt"; raw.write_text(SAMPLE, encoding="utf-8")
-    chapter = HOME / "chapters" / "chapter-01.txt"; chapter.write_text(SAMPLE, encoding="utf-8")
+    raw = HOME / "raw-dumps" / "brain.txt"
+    raw.write_text(SAMPLE, encoding="utf-8")
+    chapter = HOME / "chapters" / "chapter-01.txt"
+    chapter.write_text(SAMPLE, encoding="utf-8")
 
     preview = webapp.tag_preview(raw, use_ai=False)
     assert preview["filename"] == "brain.txt"
     assert "voice" in preview and "themes" in preview and "characters" in preview and "places" in preview
-    try:
-        webapp.find_file("chapters/chapter-01.txt")
-    except Exception:
-        raise AssertionError("File lookup unexpectedly rejected a valid manuscript file")
+
+    # The smoke fixture intentionally lives outside the checkout. Use the absolute
+    # fixture path here: Path.relative_to() cannot compare a C:\Temp path with the
+    # D:\a\... checkout on GitHub's Windows runner. Production UI paths remain
+    # project-relative and are resolved by AUDHD_SCRIBBLER_HOME.
+    assert webapp.find_file(str(chapter)).resolve() == chapter.resolve()
 
     # Deterministic tagging must be useful without an AI service.
     meta = tagger.tag_file(str(raw), use_llm=False)
@@ -63,9 +67,9 @@ def main():
     # Long-document regression: no model download/network dependency and no pathological slowdown.
     large = (SAMPLE + "\n\n") * 1200
     started = time.monotonic()
-    large_meta = tagger.tag_file(str(raw), use_llm=False)  # deterministic path remains fast
+    large_meta = tagger.tag_file(str(raw), use_llm=False)
     assert large_meta["word_count"] > 20
-    for key in ("repetition","pacing","structure","memoir","reader","research"):
+    for key in ("repetition", "pacing", "structure", "memoir", "reader", "research"):
         assert isinstance(suite_run(key, large), dict)
     assert time.monotonic() - started < 12, "Deterministic analysis path is unexpectedly slow"
 
