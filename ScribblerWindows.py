@@ -19,15 +19,11 @@ def clear_packaged_caches(root: Path):
 
 def open_url(url: str):
     try:
-        if webbrowser.open(url, new=1):
-            return True
-    except Exception:
-        pass
+        if webbrowser.open(url, new=1): return True
+    except Exception: pass
     try:
-        os.startfile(url)
-        return True
-    except Exception:
-        return False
+        os.startfile(url); return True
+    except Exception: return False
 
 
 def main():
@@ -37,9 +33,14 @@ def main():
 
     from scribbler import webapp
     from scribbler.release_ui import APP as RELEASE_APP
+    from scribbler.release_runtime import prepare_backend, enhance_ui
 
-    # Keep the established backend and Handler. Only the presentation shell is replaced.
-    webapp.APP = RELEASE_APP
+    # The release layer is deliberately thin: existing tagging, analysis, database and
+    # safety engines remain the source of truth. It only changes presentation, export
+    # wiring and the frequency of expensive full-project snapshots.
+    prepare_backend(webapp)
+    webapp.APP = enhance_ui(RELEASE_APP)
+
     server = ThreadingHTTPServer(("127.0.0.1", 0), webapp.Handler)
     url = f"http://127.0.0.1:{server.server_port}/"
     STATUS_PATH.write_text(
@@ -51,8 +52,7 @@ def main():
         ctypes.windll.user32.MessageBoxW(
             0,
             "Scribbler is running, but Windows could not open your browser automatically.\n\n"
-            f"Open this address manually:\n{url}\n\n"
-            f"Status: {STATUS_PATH}",
+            f"Open this address manually:\n{url}\n\nStatus: {STATUS_PATH}",
             "The Audhd Scribbler",
             0x40,
         )
@@ -75,5 +75,4 @@ if __name__ == "__main__":
                 "The Audhd Scribbler - startup error",
                 0x10,
             )
-        except Exception:
-            pass
+        except Exception: pass
