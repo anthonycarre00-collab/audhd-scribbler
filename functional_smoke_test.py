@@ -13,6 +13,8 @@ os.environ["AUDHD_SCRIBBLER_NO_BROWSER"] = "1"
 
 from scribbler import webapp, db
 from scribbler.analysis_suite import run as suite_run
+from scribbler.release_runtime import prepare_backend, enhance_ui
+from scribbler.release_ui import APP as RELEASE_APP
 
 SAMPLE = """I remember the old house at the edge of town. The kitchen was narrow and bright.
 
@@ -43,11 +45,25 @@ def main():
         result = suite_run(key, SAMPLE)
         assert isinstance(result, dict) and result, f"Suite tool failed: {key}"
 
+    # Release presentation must still be the established API-driven UI, not a second engine.
+    prepare_backend(webapp)
+    release_html = enhance_ui(RELEASE_APP)
+    assert "Export tagged document" in release_html
+    assert "Scribbler is thinking" in release_html
+    assert "Exports / Tagged" in release_html
+    assert "Exports / Analysis" in release_html
+
+    # Full snapshots are intentionally not triggered for ordinary analysis/import/note work.
+    assert webapp.safety.create_snapshot("before-analysis") is None
+    assert webapp.safety.create_snapshot("before-import") is None
+
     assert raw.parent.name == "raw-dumps" and chapter.parent.name == "chapters"
     print("FUNCTIONAL SMOKE PASSED")
     print("- Inbox tag preview: PASS")
     print("- All 17 analysis tools: PASS")
     print("- Six deterministic suite tools: PASS")
+    print("- Release progress/export UI wiring: PASS")
+    print("- Expensive automatic snapshots disabled: PASS")
     print("- Project isolation: PASS")
 
 
