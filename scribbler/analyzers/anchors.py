@@ -110,6 +110,31 @@ def _analyze_single(text: str) -> Dict:
     opening_type = _classify_gesture(first)
     closing_type = _classify_gesture(last)
 
+    # Generate simple observations for single-chapter
+    observations = []
+    observations.append(format_flag(
+        "opening_gesture",
+        "first sentence",
+        f"the chapter opens with a {opening_type} gesture",
+        "the opening gesture sets the reader's expectation for the chapter's mode",
+        [
+            "check if this gesture type serves the chapter's purpose",
+            "try opening with a different gesture type to compare",
+            "keep as-is if the opening gesture is intentional",
+        ]
+    ))
+    observations.append(format_flag(
+        "closing_gesture",
+        "last sentence",
+        f"the chapter closes with a {closing_type} gesture",
+        "the closing gesture determines how the reader feels at the chapter's end",
+        [
+            "check if the closing gesture lands the emotional beat you want",
+            "try a different closing gesture to compare effects",
+            "keep as-is if the closing gesture is intentional",
+        ]
+    ))
+
     return {
         "scope": "chapter",
         "word_count": word_count,
@@ -118,6 +143,7 @@ def _analyze_single(text: str) -> Dict:
         "opening_preview": first[:100] + ("..." if len(first) > 100 else ""),
         "closing_gesture": closing_type,
         "closing_preview": last[:100] + ("..." if len(last) > 100 else ""),
+        "observations": observations,
         "note": "Single-chapter analysis. Run manuscript-level for cross-chapter patterns.",
         "summary": plain_summary(
             what=f"Structural anchor analysis of 1 chapter ({word_count} words)",

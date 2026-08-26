@@ -79,12 +79,16 @@ def _analyze_single(text: str) -> Dict:
     # Sensory motifs
     sensory = _sensory_in_single(text)
 
+    # Generate observations
+    observations = _generate_observations(recurring, phrases, sensory, [], 1)
+
     return {
         "scope": "chapter",
         "word_count": word_count,
         "candidate_motifs": recurring,
         "phrase_echoes": phrases,
         "sensory_motifs": sensory,
+        "observations": observations,
         "note": "Single-chapter motif analysis. Run manuscript-level analysis for cross-chapter motifs.",
         "summary": _generate_summary(1, word_count, recurring, phrases, sensory),
     }
@@ -226,8 +230,8 @@ def _generate_observations(recurring, echoes, sensory, orphans, chapter_count) -
         top = recurring[0]
         observations.append(format_flag(
             "recurring_motif",
-            f"across {top['chapter_count']} chapters",
-            f"'{top['image']}' recurs across {top['chapter_count']} chapter(s) — a candidate motif",
+            f"across {top.get('chapter_count', 1)} chapter(s)",
+            f"'{top.get('image', top.get('word', '?'))}' recurs {top.get('count', 0)} time(s) — a candidate motif",
             "recurring images create thematic stitching; readers may not consciously notice but feel the coherence",
             [
                 "notice whether this motif is doing deliberate symbolic work",
@@ -251,10 +255,11 @@ def _generate_observations(recurring, echoes, sensory, orphans, chapter_count) -
 
     if sensory:
         top_sensory = sensory[0]
+        sensory_chapters = top_sensory.get('chapter_count', top_sensory.get('count', 1))
         observations.append(format_flag(
             "sensory_motif",
-            f"'{top_sensory['word']}' ({top_sensory['sense']}) in {top_sensory['chapter_count']} chapters",
-            f"sensory motif: '{top_sensory['word']}' ({top_sensory['sense']}) recurs across {top_sensory['chapter_count']} chapter(s)",
+            f"'{top_sensory.get('word', '?')}' ({top_sensory.get('sense', '?')}) in {sensory_chapters} instance(s)",
+            f"sensory motif: '{top_sensory.get('word', '?')}' ({top_sensory.get('sense', '?')}) recurs {sensory_chapters} time(s)",
             "recurring sensory details are among the most powerful motif types — they ground the reader in the body",
             [
                 "notice whether this sensory detail is doing thematic work",

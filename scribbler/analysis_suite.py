@@ -89,4 +89,23 @@ def research(t):
 def run(name,t):
     tools={"repetition":repetition,"pacing":pacing,"structure":structure,"memoir":memoir,"reader":reader,"research":research}
     if name not in tools: raise ValueError(f"Analysis tool '{name}' is not implemented")
-    result=tools[name](t); result["analysis"]={"tool":name,"word_count":len(words(t)),"evidence_first":True}; return result
+    result=tools[name](t); result["analysis"]={"tool":name,"word_count":len(words(t)),"evidence_first":True}
+    # Add summary and observations fields for consistency with other analyzers
+    if "summary" not in result:
+        wc=len(words(t))
+        title=name.replace("_"," ").title()
+        advice_list=result.get("advice",[])
+        result["summary"]=f"What this is: {title} analysis of {wc} words\nWhat it found: {len(advice_list)} advice point(s)\nWhat you could do next: Review the advice below — each describes a pattern to notice"
+    if "observations" not in result:
+        advice_list=result.get("advice",[])
+        result["observations"]=[
+            {
+                "category": name,
+                "location": "whole chapter",
+                "observation": a,
+                "effect": "this is a pattern to notice, not a problem to fix",
+                "options": ["review in context", "keep as-is if intentional"],
+                "formatted": f"I noticed the following: {a} It had the effect that this is a pattern to notice. Would you like to (a) review it in context, (b) keep as-is if intentional, or (c) come back to this later?"
+            } for a in advice_list
+        ]
+    return result
