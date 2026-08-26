@@ -139,38 +139,60 @@ def _extract_settings(text: str) -> List[str]:
 
 
 def _detect_anachronisms(text: str) -> List[Dict]:
-    """Detect potential anachronisms based on the 80s-2025 era span."""
+    """Detect potential anachronisms based on the 80s-2025 era span.
+
+    The ANACHRONISM_WATCHLIST is structured as {category: [item1, item2, ...]}.
+    We flatten it and search for each item in the text.
+    """
     text_lower = text.lower()
     flags = []
 
-    for item, first_year in ANACHRONISM_WATCHLIST.items():
+    # Flatten: {category: [items]} -> [(item, category), ...]
+    items_to_check = []
+    for category, items in ANACHRONISM_WATCHLIST.items():
+        if isinstance(items, list):
+            for item in items:
+                items_to_check.append((item, category))
+        elif isinstance(items, int):
+            items_to_check.append((category, None))
+
+    for item, category in items_to_check:
         if re.search(r'\b' + re.escape(item.lower()) + r'\b', text_lower):
-            # Find the context
+            # Estimate first_attested based on category
+            if category == "technology":
+                first_year = 2007
+            elif category == "media":
+                first_year = 2008
+            elif category == "modern_terms":
+                first_year = 1995
+            else:
+                first_year = 2000
+
             match = re.search(r'\b' + re.escape(item.lower()) + r'\b', text_lower)
             if match:
                 pos = match.start()
                 context = text[max(0, pos - 50):pos + len(item) + 50].strip()
-
-                # Check if there's a year reference nearby
                 nearby_years = re.findall(r'\b(19[8-9]\d|20[0-2]\d)\b', text[max(0, pos - 200):pos + 200])
                 scene_year = int(nearby_years[0]) if nearby_years else None
 
                 if scene_year and scene_year < first_year:
                     flags.append({
                         "item": item,
+                        "category": category,
                         "first_attested": first_year,
                         "scene_year": scene_year,
                         "context": context,
                         "severity": "potential_anachronism",
-                        "message": f"'{item}' first appeared around {first_year}, but the scene seems set in {scene_year}. Worth checking.",
+                        "message": f"'{item}' ({category}) first appeared around {first_year}, but the scene seems set in {scene_year}. Worth checking.",
                     })
                 else:
                     flags.append({
                         "item": item,
+                        "category": category,
                         "first_attested": first_year,
                         "context": context,
                         "severity": "note",
-                        "message": f"'{item}' first appeared around {first_year}. If the scene is set earlier, this may be an anachronism.",
+                        "message": f"'{item}' ({category}) first appeared around {first_year}. If the scene is set earlier, this may be an anachronism.",
                     })
 
     return flags

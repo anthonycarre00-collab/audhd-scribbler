@@ -1,3 +1,3 @@
 # characters/
 
-One file per character. Aliases, relationships, timeline notes.
+Character notes, aliases, relationships and timeline notes.

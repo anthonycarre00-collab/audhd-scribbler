@@ -1,3 +1,3 @@
 # archive/
 
-Older drafts, abandoned material, snapshots. Never deleted.
+Older drafts and deliberately archived material. Never deleted by Scribbler.

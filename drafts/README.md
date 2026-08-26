@@ -1,3 +1,3 @@
 # drafts/
 
-Chapters past first-draft but not yet final.
+Chapters past first draft but not yet final.

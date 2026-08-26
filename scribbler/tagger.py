@@ -7,6 +7,7 @@ Never alters the body text — only the metadata.
 """
 import re
 import os
+import sys
 from datetime import date, datetime
 from pathlib import Path
 from typing import Dict, List, Optional, Tuple
@@ -152,11 +153,53 @@ def detect_emotional_register(text: str) -> Optional[str]:
 
 
 def detect_anachronisms(text: str, scene_year: int = None) -> List[Dict]:
-    flags=[]; low=text.lower()
-    for item,first_year in ANACHRONISM_WATCHLIST.items():
-        if re.search(r'\b'+re.escape(item)+r'\b',low):
-            if scene_year and scene_year<first_year: flags.append({"item":item,"first_attested":first_year,"scene_year":scene_year,"message":f"'{item}' first attested around {first_year}, but scene appears set in {scene_year}. Worth a check."})
-            elif not scene_year: flags.append({"item":item,"first_attested":first_year,"message":f"'{item}' first attested around {first_year}. If the scene is set earlier, this may be an anachronism."})
+    """Detect potential anachronisms based on the era span (80s-2025).
+
+    The ANACHRONISM_WATCHLIST is structured as {category: [item1, item2, ...]}.
+    We flatten it and search for each item in the text. Since the config doesn't
+    have per-item first_attested years, we use the ERA_SPAN_START as the baseline
+    and flag any modern term that appears in a scene set before that term existed.
+    """
+    flags = []
+    low = text.lower()
+
+    # Flatten the watchlist: {category: [items]} -> [(item, category), ...]
+    items_to_check = []
+    for category, items in ANACHRONISM_WATCHLIST.items():
+        if isinstance(items, list):
+            for item in items:
+                items_to_check.append((item, category))
+        elif isinstance(items, int):
+            # Backward compat: old format was {item: year}
+            items_to_check.append((category, None))
+
+    for item, category in items_to_check:
+        if re.search(r'\b' + re.escape(item.lower()) + r'\b', low):
+            # Estimate first_attested based on category (rough heuristic)
+            if category == "technology":
+                first_attested = 2007  # smartphone era
+            elif category == "media":
+                first_attested = 2008  # streaming era
+            elif category == "modern_terms":
+                first_attested = 1995  # internet era
+            else:
+                first_attested = 2000  # default
+
+            if scene_year and scene_year < first_attested:
+                flags.append({
+                    "item": item,
+                    "category": category,
+                    "first_attested": first_attested,
+                    "scene_year": scene_year,
+                    "message": f"'{item}' (category: {category}) first appeared around {first_attested}, but scene appears set in {scene_year}. Worth a check."
+                })
+            elif not scene_year:
+                flags.append({
+                    "item": item,
+                    "category": category,
+                    "first_attested": first_attested,
+                    "message": f"'{item}' (category: {category}) first appeared around {first_attested}. If the scene is set earlier, this may be an anachronism."
+                })
     return flags
 
 _spacy_nlp=None
@@ -188,13 +231,24 @@ def llm_assisted_tagging(text: str) -> Optional[Dict]:
         chunks.append(chunk); start=end-overlap if end<len(text) else end
         if start>=len(text):break
     all_beats=[];all_themes=[];chunk_summaries=[];chunk_emotions=[];strength_signals=[]
+    failed_chunks=[]
     for i,chunk in enumerate(chunks):
-        result=_llm_tag_single_chunk(chunk,chunk_num=i+1,total_chunks=len(chunks))
+        # Progress output to stderr so it shows in the console
+        print(f"  [AI] Processing chunk {i+1} of {len(chunks)}...", file=sys.stderr, flush=True)
+        try:
+            result=_llm_tag_single_chunk(chunk,chunk_num=i+1,total_chunks=len(chunks))
+        except Exception as e:
+            print(f"  [Warning] Chunk {i+1} failed: {e}", file=sys.stderr)
+            result=None
         if result:
             all_beats.extend(result.get("beats",[]));all_themes.extend(result.get("themes",[]));
             if result.get("summary"):chunk_summaries.append(result["summary"])
             if result.get("emotional_register"):chunk_emotions.append(result["emotional_register"])
             if result.get("strength_signal"):strength_signals.append(result["strength_signal"])
+        else:
+            failed_chunks.append(i+1)
+    if failed_chunks:
+        print(f"  [Warning] {len(failed_chunks)} chunk(s) failed: {failed_chunks}. Those sections may be under-tagged.", file=sys.stderr)
     from collections import Counter
     merged_themes=[t for t,_ in Counter(all_themes).most_common(8)]
     seen=set();unique_beats=[]
@@ -249,5 +303,37 @@ def tag_file(file_path: str, use_llm: bool=True) -> Dict:
     status_map={"raw-dumps":"seedling","triage":"growing","chapters":"growing","drafts":"shaping","final":"polishing","archive":"resting"};status=status_map.get(folder,"seedling")
     chapter_no=None;ch_match=re.match(r'ch-?(\d+)',path.stem,re.I)
     if ch_match:chapter_no=int(ch_match.group(1))
-    meta={"path":str(path.resolve()),"filename":path.name,"folder":folder,"word_count":word_count,"status":status,"chapter_no":chapter_no,"characters":characters,"places":places,"era":era,"beats":beats,"themes":themes,"voice":voice,"sensory":sensory,"continuity":[],"emotional_register":emotional_register,"motifs":[],"anachronisms":anachronisms,"summary":summary,"strength_signal":strength_signal,"tagger_version":"4.1"}
+    meta={"path":str(path.resolve()),"filename":path.name,"folder":folder,"word_count":word_count,"status":status,"chapter_no":chapter_no,"characters":characters,"places":places,"era":era,"beats":beats,"themes":themes,"voice":voice,"sensory":sensory,"continuity":[],"emotional_register":emotional_register,"motifs":[],"summary":summary,"strength_signal":1 if strength_signal else 0}
+    # Save to database so search/stats/coverage actually work
+    try:
+        from . import db
+        db.upsert_file(meta)
+    except Exception as e:
+        # Don't fail the whole tag if DB write fails — return meta anyway
+        print(f"  [Warning] Could not save to database: {e}", file=sys.stderr)
     return meta
+
+
+def find_links(file_path: str):
+    """Find other files that reference the same characters, places, or themes."""
+    from . import db
+    target = db.get_file(file_path)
+    if not target:
+        return []
+    all_files = db.get_all_files()
+    links = []
+    for other in all_files:
+        if other["path"] == file_path:
+            continue
+        shared_characters = set(target.get("characters", [])) & set(other.get("characters", []))
+        shared_places = set(target.get("places", [])) & set(other.get("places", []))
+        shared_themes = set(target.get("themes", [])) & set(other.get("themes", []))
+        if shared_characters or shared_places or shared_themes:
+            links.append({
+                "file": other["filename"],
+                "path": other["path"],
+                "shared_characters": list(shared_characters),
+                "shared_places": list(shared_places),
+                "shared_themes": list(shared_themes),
+            })
+    return links

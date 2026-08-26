@@ -1,3 +1,3 @@
 # research/
 
-Source claims, citations, bibliography for the research braid.
+Source claims, citations and bibliography.

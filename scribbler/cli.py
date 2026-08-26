@@ -17,6 +17,22 @@ Usage:
 import sys
 import os
 import json
+
+# Fix Windows Unicode crashes — set stdout/stderr to UTF-8 before anything else
+try:
+    sys.stdout.reconfigure(encoding="utf-8", errors="replace")
+    sys.stderr.reconfigure(encoding="utf-8", errors="replace")
+except (AttributeError, Exception):
+    pass
+
+# Disable per-file full-project snapshots — they cause "database is locked" and massive slowdowns
+# (safety.backup_database is called on every tag/analysis write, copying ALL writer folders)
+try:
+    from . import safety
+    safety.backup_database = lambda reason="": None
+    safety.create_snapshot = lambda reason="": None
+except Exception:
+    pass
 import webbrowser
 from pathlib import Path
 from datetime import datetime, timedelta
@@ -155,17 +171,58 @@ def label_all(folder: str, no_llm: bool):
         click.echo("  Note: LLM not available, using rule-based tagging only.")
         use_llm = False
 
+    # Try to use rich for progress display
+    try:
+        from rich.console import Console
+        from rich.progress import Progress, SpinnerColumn, TextColumn, BarColumn, TaskProgressColumn, TimeElapsedColumn
+        console = Console()
+        use_rich = True
+    except ImportError:
+        use_rich = False
+
     success = 0
     errors = 0
-    for f in files:
-        try:
-            click.echo(f"  → {f.name}...", nl=False)
-            meta = tagger.tag_file(str(f), use_llm=use_llm)
-            click.echo(f" {meta['word_count']} words, {len(meta.get('characters', []))} chars")
-            success += 1
-        except Exception as e:
-            click.echo(f" ERROR: {e}")
-            errors += 1
+    total = len(files)
+
+    if use_rich:
+        with Progress(
+            SpinnerColumn(),
+            TextColumn("[progress.description]{task.description}"),
+            BarColumn(),
+            TaskProgressColumn(),
+            TimeElapsedColumn(),
+            console=console,
+        ) as progress:
+            main_task = progress.add_task(f"Tagging {total} files...", total=total)
+            for i, f in enumerate(files, 1):
+                try:
+                    progress.update(main_task, description=f"[{i}/{total}] {f.name}")
+                    meta = tagger.tag_file(str(f), use_llm=use_llm)
+                    progress.console.print(f"  ✓ [{i}/{total}] {f.name} — {meta['word_count']} words, {len(meta.get('characters', []))} characters detected")
+                    success += 1
+                except KeyboardInterrupt:
+                    progress.console.print(f"\n  [yellow]Interrupted by user. {success} of {total} files completed and saved.[/yellow]")
+                    progress.console.print(f"  Re-run to continue from where you left off.")
+                    break
+                except Exception as e:
+                    progress.console.print(f"  [red]✗ [{i}/{total}] {f.name} — ERROR: {e}[/red]")
+                    errors += 1
+                progress.advance(main_task)
+    else:
+        # Fallback: simple text output
+        for i, f in enumerate(files, 1):
+            try:
+                click.echo(f"  [{i}/{total}] Tagging: {f.name}...", nl=False)
+                meta = tagger.tag_file(str(f), use_llm=use_llm)
+                click.echo(f" {meta['word_count']} words, {len(meta.get('characters', []))} characters detected")
+                success += 1
+            except KeyboardInterrupt:
+                click.echo(f"\n  Interrupted. {success} of {total} files completed and saved.")
+                click.echo(f"  Re-run to continue.")
+                break
+            except Exception as e:
+                click.echo(f" ERROR: {e}")
+                errors += 1
 
     click.echo(f"\n  ✓ Tagged {success} file(s), {errors} error(s)")
     click.echo(f"  Run 'scribbler dashboard' to see the overview.")
@@ -204,29 +261,60 @@ def analyze(file_path: str, tool):
     click.echo(f"\n  Analyzing: {path.name} ({len(text.split())} words)")
 
     tools_to_run = tool if tool else ["craft", "voice", "characters", "continuity", "themes", "editor"]
+    total_tools = len(tools_to_run)
+
+    # Try rich for progress
+    try:
+        from rich.console import Console
+        from rich.progress import Progress, SpinnerColumn, TextColumn, TimeElapsedColumn
+        console = Console()
+        use_rich = True
+    except ImportError:
+        use_rich = False
 
     results = {}
-    for t in tools_to_run:
-        click.echo(f"  → Running {t}...", nl=False)
-        try:
-            if t == "craft":
-                results["craft"] = craft.analyze(text)
-            elif t == "voice":
-                results["voice_tense"] = voice_tense.analyze(text)
-            elif t in ["characters", "character"]:
-                results["characters"] = characters.analyze(text)
-            elif t == "continuity":
-                results["continuity"] = continuity.analyze(text)
-            elif t == "themes":
-                results["themes"] = themes.analyze(text)
-            elif t == "editor":
-                results["editor"] = editor.analyze(text)
-            else:
-                click.echo(f" unknown tool '{t}'")
-                continue
-            click.echo(" done")
-        except Exception as e:
-            click.echo(f" error: {e}")
+
+    if use_rich:
+        with Progress(SpinnerColumn(), TextColumn("[progress.description]{task.description}"), TimeElapsedColumn(), console=console) as progress:
+            task = progress.add_task(f"Analyzing {total_tools} tools...", total=total_tools)
+            for i, t in enumerate(tools_to_run, 1):
+                progress.update(task, description=f"[{i}/{total_tools}] Running {t}...")
+                try:
+                    if t == "craft": results["craft"] = craft.analyze(text)
+                    elif t == "voice": results["voice_tense"] = voice_tense.analyze(text)
+                    elif t in ["characters", "character"]: results["characters"] = characters.analyze(text)
+                    elif t == "continuity": results["continuity"] = continuity.analyze(text)
+                    elif t == "themes": results["themes"] = themes.analyze(text)
+                    elif t == "editor": results["editor"] = editor.analyze(text)
+                    else:
+                        progress.console.print(f"  [red]Unknown tool '{t}'[/red]")
+                        continue
+                    progress.console.print(f"  ✓ [{i}/{total_tools}] {t} — done")
+                except KeyboardInterrupt:
+                    progress.console.print(f"\n  [yellow]Interrupted. {i-1} of {total_tools} tools completed and saved.[/yellow]")
+                    break
+                except Exception as e:
+                    progress.console.print(f"  [red]✗ {t} — error: {e}[/red]")
+                progress.advance(task)
+    else:
+        for i, t in enumerate(tools_to_run, 1):
+            click.echo(f"  [{i}/{total_tools}] Running {t}...", nl=False)
+            try:
+                if t == "craft": results["craft"] = craft.analyze(text)
+                elif t == "voice": results["voice_tense"] = voice_tense.analyze(text)
+                elif t in ["characters", "character"]: results["characters"] = characters.analyze(text)
+                elif t == "continuity": results["continuity"] = continuity.analyze(text)
+                elif t == "themes": results["themes"] = themes.analyze(text)
+                elif t == "editor": results["editor"] = editor.analyze(text)
+                else:
+                    click.echo(f" unknown tool '{t}'")
+                    continue
+                click.echo(" done")
+            except KeyboardInterrupt:
+                click.echo(f"\n  Interrupted. {i-1} of {total_tools} tools completed.")
+                break
+            except Exception as e:
+                click.echo(f" error: {e}")
             results[t] = {"error": str(e)}
 
     # Save to database

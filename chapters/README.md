@@ -1,3 +1,3 @@
 # chapters/
 
-Chapter drafts in progress. Named ch-XX-short-slug.md.
+Chapter drafts in progress.

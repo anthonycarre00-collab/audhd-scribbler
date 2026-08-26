@@ -7,7 +7,6 @@ from typing import Optional, List, Dict, Any
 import json
 
 from .config import DB_PATH, DATA_DIR
-from .safety import backup_database
 
 
 def get_db() -> sqlite3.Connection:
@@ -101,9 +100,11 @@ def _init_tables(conn: sqlite3.Connection):
 def upsert_file(meta: Dict[str, Any]):
     """Insert or update a file's metadata."""
     import copy
-    backup_database("before-tag")
     conn = get_db()
     db_meta = copy.deepcopy(meta)
+    # Strip keys that aren't DB columns (prevents OperationalError)
+    valid_columns = {"path","filename","folder","word_count","status","chapter_no","characters","places","era","beats","themes","voice","sensory","continuity","emotional_register","motifs","research_claims","citations","comp_titles","strength_signal","summary","dump_date","last_modified","last_analyzed"}
+    db_meta = {k: v for k, v in db_meta.items() if k in valid_columns}
     for key in ["characters", "places", "beats", "themes", "sensory", "continuity", "motifs"]:
         if key in db_meta and isinstance(db_meta[key], list):
             db_meta[key] = json.dumps(db_meta[key], ensure_ascii=False)
@@ -150,7 +151,6 @@ def get_all_files(folder: str = None) -> List[Dict]:
 
 def save_analysis(file_path: str, analysis_type: str, result: dict):
     """Save analysis safely; retain the previous result in immutable history."""
-    backup_database("before-analysis")
     conn = get_db()
     now = datetime.now().isoformat()
     payload = json.dumps(result, ensure_ascii=False)

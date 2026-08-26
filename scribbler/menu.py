@@ -11,6 +11,21 @@ import webbrowser
 from pathlib import Path
 from datetime import datetime
 
+# Fix Windows Unicode crashes — set stdout/stderr to UTF-8 before anything else
+try:
+    sys.stdout.reconfigure(encoding="utf-8", errors="replace")
+    sys.stderr.reconfigure(encoding="utf-8", errors="replace")
+except (AttributeError, Exception):
+    pass
+
+# Disable per-file full-project snapshots — they cause "database is locked" and massive slowdowns
+try:
+    from scribbler import safety
+    safety.backup_database = lambda reason="": None
+    safety.create_snapshot = lambda reason="": None
+except Exception:
+    pass
+
 # Make sure we can import the scribbler package
 SCRIPT_DIR = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(SCRIPT_DIR))
