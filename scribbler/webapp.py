@@ -99,5 +99,25 @@ class Handler(BaseHTTPRequestHandler):
   from . import ui
   return self.send_json({"ok":True})
 
+ def export(self):
+  """Export a file or analysis report. Used by the /api/export endpoint."""
+  body = json.loads(self.read_body() or b"{}")
+  file_path = body.get("path") or body.get("file")
+  fmt = body.get("format", "docx")
+  if not file_path:
+   return self.send_json({"ok": False, "error": "No file path provided"}, 400)
+  try:
+   if fmt == "docx":
+    out = export_docx(file_path)
+   elif fmt == "md":
+    out = export_markdown(file_path)
+   elif fmt == "txt":
+    out = export_plain_text(file_path)
+   else:
+    return self.send_json({"ok": False, "error": f"Unknown format: {fmt}"}, 400)
+   return self.send_json({"ok": True, "path": out})
+  except Exception as e:
+   return self.send_json({"ok": False, "error": str(e)}, 500)
+
 def run_server(open_browser=False):
  return ThreadingHTTPServer(("127.0.0.1",0),Handler)

@@ -51,7 +51,25 @@ SENSORY_CATEGORIES = {
 }
 AUDHD_THEMES = {
     "diagnosis": ["diagnosis", "diagnosed", "diagnostic", "assessment", "evaluated", "tested", "labeled", "identified"],
-    "masking": ["masking", "mask", "pretending", "passing", "camouflage", "camouflaging", "blending in"],
+    "masking": ["masking", "mask", "pretending", "passing", "camouflage", "camouflaging", "blending in", "fake", "perform", "performing", "script", "scripting"],
+    "sensory_processing": ["sensory", "overload", "overwhelm", "overstimulated", "understimulated", "fluorescent", "loud", "bright", "texture", "tag", "seam", "scratchy", "hum", "buzz", "overwhelmed"],
+    "special_interests": ["obsession", "obsessed", "fascinated", "hyperfixation", "hyperfixated", "deep dive", "rabbit hole", "infodump", "passionate about", "special interest"],
+    "executive_function": ["executive function", "task initiation", "working memory", "planning", "prioritizing", "couldn't start", "paralyzed", "stuck", "frozen", "can't begin"],
+    "burnout": ["burnout", "burned out", "burnt out", "exhausted", "depleted", "drained", "empty", "hollow", "checked out", "collapse"],
+    "meltdowns": ["meltdown", "meltdowns", "shutdown", "shut down", "screaming", "crying", "lost control", "flooded", "incapacitated"],
+    "stimming": ["stimming", "stim", "rocking", "flapping", "humming", "tapping", "fidget", "fidgeting", "repetitive", "pacing", "spinning"],
+    "late_discovery": ["late diagnosis", "adult diagnosis", "didn't know", "all along", "realization", "discovered", "found out"],
+    "identity_integration": ["unmasking", "becoming", "who i am", "authentic", "real self", "identity", "neurodivergent", "autistic", "adhd", "audhd"],
+    "monotropism": ["absorbed", "tunnel", "focus", "one thing", "couldn't shift", "tunnel vision", "monotropism"],
+    "demand_avoidance": ["demand", "pda", "avoid", "refusal", "couldn't make myself", "won't", "pathological demand"],
+    "hyperfocus": ["hours passed", "didn't notice", "time disappeared", "absorbed", "lost track of time", "flow state"],
+    "alexithymia": ["couldn't name", "didn't know what i felt", "feeling", "identify emotion", "can't describe", "numb"],
+    "interoception": ["body", "signal", "hunger", "tired", "pain", "didn't notice", "heartbeat", "breath", "chest", "stomach", "gut", "throat"],
+    "rejection_sensitivity": ["rsd", "criticism", "rejected", "slight", "perceived", "hypersensitive", "rejection sensitive"],
+    "accommodation": ["accommodation", "support", "needs", "iep", "504", "therapy", "occupational", "sensory diet"],
+    "self_advocacy": ["advocate", "speak up", "needs", "boundaries", "asked for", "self-advocacy"],
+    "routine": ["routine", "ritual", "same", "change", "transition", "disruption", "unexpected", "surprise", "sameness"],
+    "social": ["social", "socializing", "party", "gatherings", "small talk", "eye contact", "cue", "cues", "social cues", "norms", "unwritten rules"],
 }
 WEAK_WORDS = [
     "just", "really", "very", "suddenly", "somewhat", "quite", "rather", "actually", "basically",

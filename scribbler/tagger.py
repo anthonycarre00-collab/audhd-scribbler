@@ -296,15 +296,21 @@ def tag_file(file_path: str, use_llm: bool=True) -> Dict:
             themes=themes[:10]
             if not emotional_register:emotional_register=llm_result.get("emotional_register")
             summary=llm_result.get("summary","");strength_signal=llm_result.get("strength_signal")
-    rel_path=path.resolve().relative_to(PROJECT_ROOT.resolve());folder=str(rel_path.parent) if str(rel_path.parent)!="." else "root"
-    for f in FOLDERS:
-        if folder==f or folder.startswith(f+"/"):folder=f;break
-    else:folder="raw-dumps"
+    # Determine folder — handle paths outside PROJECT_ROOT gracefully (smoke tests, temp dirs)
+    try:
+        rel_path=path.resolve().relative_to(PROJECT_ROOT.resolve())
+        folder=str(rel_path.parent) if str(rel_path.parent)!="." else "root"
+        for f in FOLDERS:
+            if folder==f or folder.startswith(f+"/"):folder=f;break
+        else:folder="raw-dumps"
+    except ValueError:
+        # Path is outside PROJECT_ROOT (e.g. temp dir in smoke test) — default to raw-dumps
+        folder="raw-dumps"
     status_map={"raw-dumps":"seedling","triage":"growing","chapters":"growing","drafts":"shaping","final":"polishing","archive":"resting"};status=status_map.get(folder,"seedling")
     chapter_no=None;ch_match=re.match(r'ch-?(\d+)',path.stem,re.I)
     if ch_match:chapter_no=int(ch_match.group(1))
-    meta={"path":str(path.resolve()),"filename":path.name,"folder":folder,"word_count":word_count,"status":status,"chapter_no":chapter_no,"characters":characters,"places":places,"era":era,"beats":beats,"themes":themes,"voice":voice,"sensory":sensory,"continuity":[],"emotional_register":emotional_register,"motifs":[],"summary":summary,"strength_signal":1 if strength_signal else 0}
-    # Save to database so search/stats/coverage actually work
+    meta={"path":str(path.resolve()),"filename":path.name,"folder":folder,"word_count":word_count,"status":status,"chapter_no":chapter_no,"characters":characters,"places":places,"era":era,"beats":beats,"themes":themes,"voice":voice,"sensory":sensory,"continuity":[],"emotional_register":emotional_register,"motifs":[],"summary":summary,"strength_signal":1 if strength_signal else 0,"tagger_version":"4.1","anachronisms":anachronisms}
+    # Save to database so search/stats/coverage actually work (db.upsert_file filters non-DB keys)
     try:
         from . import db
         db.upsert_file(meta)

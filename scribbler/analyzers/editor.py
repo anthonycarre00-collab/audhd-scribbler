@@ -15,23 +15,30 @@ from ..config import AUDHD_THEMES, WEAK_WORDS, FILTER_WORDS
 from . import craft, voice_tense, characters, continuity, themes
 
 
-def analyze(text: str) -> Dict:
-    """Run editor-style analysis. Combines signals from other analyzers + memoir-specific patterns."""
+def analyze(text: str, precomputed: Dict = None) -> Dict:
+    """Run editor-style analysis. Combines signals from other analyzers + memoir-specific patterns.
+
+    Args:
+        text: The text to analyze
+        precomputed: Optional dict of already-computed analyzer results to avoid re-running.
+                     Keys can be: 'craft', 'voice_tense', 'characters', 'continuity', 'themes'
+    """
     words = re.findall(r'\b\w+\b', text)
     word_count = len(words)
 
     if word_count < 10:
         return {"error": "Text too short", "word_count": word_count}
 
-    # Gather signals from other analyzers
-    craft_result = craft.analyze(text)
-    voice_result = voice_tense.analyze(text)
-    char_result = characters.analyze(text)
-    cont_result = continuity.analyze(text)
-    theme_result = themes.analyze(text)
+    # Use pre-computed results if available, otherwise compute (avoids 2-3x redundant work)
+    precomputed = precomputed or {}
+    craft_result = precomputed.get("craft") or craft.analyze(text)
+    voice_result = precomputed.get("voice_tense") or precomputed.get("voice") or voice_tense.analyze(text)
+    char_result = precomputed.get("characters") or precomputed.get("character") or characters.analyze(text)
+    cont_result = precomputed.get("continuity") or continuity.analyze(text)
+    theme_result = precomputed.get("themes") or themes.analyze(text)
 
     # Generate strengths inventory FIRST
-    strengths = _generate_strengths(text, craft_result, voice_result, theme_result)
+    strengths = _generate_strengths(text, craft_result, voice_result, theme_result, char_result)
 
     # Generate memoir-specific observations
     memoir_patterns = _detect_memoir_patterns(text, craft_result, voice_result, char_result, cont_result)
@@ -65,7 +72,7 @@ def analyze(text: str) -> Dict:
     }
 
 
-def _generate_strengths(text: str, craft_result: Dict, voice_result: Dict, theme_result: Dict) -> List[str]:
+def _generate_strengths(text: str, craft_result: Dict, voice_result: Dict, theme_result: Dict, char_result: Dict = None) -> List[str]:
     """Generate a genuine strengths inventory. This is the foundation of low-shame feedback."""
     strengths = []
 
@@ -104,9 +111,10 @@ def _generate_strengths(text: str, craft_result: Dict, voice_result: Dict, theme
     if 10 < dialogue.get("dialogue_pct", 0) < 50:
         strengths.append(f"Balanced dialogue presence ({dialogue['dialogue_pct']:.0f}%) — other voices are present without overwhelming the narrator's.")
 
-    # Lexical diversity
-    char_data = characters.analyze(text)
-    voice_fp = char_data.get("voice_fingerprint", {})
+    # Lexical diversity — use passed-in char_result instead of re-running characters.analyze
+    if char_result is None:
+        char_result = characters.analyze(text)
+    voice_fp = char_result.get("voice_fingerprint", {})
     mattr = voice_fp.get("lexical_diversity_mattr", 0)
     if mattr > 0.6:
         strengths.append(f"Rich vocabulary (lexical diversity MATTR={mattr}) — the word choice is varied without being showy.")

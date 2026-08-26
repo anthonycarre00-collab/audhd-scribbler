@@ -48,6 +48,8 @@ from . import llm
 from . import search as search_module
 from .file_io import read_text_file
 from .analyzers import craft, voice_tense, characters, continuity, themes, editor, market as market_analyzer
+from .analysis_suite import run as suite_run
+from .analysis_catalog import ANALYSIS_CATALOG
 from .dashboard import generate as generate_dashboard
 
 
@@ -260,8 +262,22 @@ def analyze(file_path: str, tool):
 
     click.echo(f"\n  Analyzing: {path.name} ({len(text.split())} words)")
 
-    tools_to_run = tool if tool else ["craft", "voice", "characters", "continuity", "themes", "editor"]
+    # All 17 tools from the catalog; default = the 6 core + 6 suite = 12 implemented tools
+    suite_tools = ["repetition", "pacing", "structure", "memoir", "reader", "research"]
+    if tool:
+        tools_to_run = list(tool)
+    else:
+        # Default: run all implemented tools (12 of 17; 5 are not yet implemented)
+        tools_to_run = ["craft", "voice", "characters", "continuity", "themes", "editor"] + suite_tools
     total_tools = len(tools_to_run)
+
+    # Validate tools against the catalog
+    valid_tools = set(ANALYSIS_CATALOG.keys())
+    invalid = [t for t in tools_to_run if t not in valid_tools]
+    if invalid:
+        click.echo(f"  Unknown tool(s): {invalid}")
+        click.echo(f"  Valid tools: {', '.join(sorted(valid_tools))}")
+        return
 
     # Try rich for progress
     try:
@@ -274,48 +290,65 @@ def analyze(file_path: str, tool):
 
     results = {}
 
+    def run_tool(t, text):
+        """Run a single analysis tool and return its result dict."""
+        # Core analyzers (6)
+        if t == "craft": return craft.analyze(text)
+        elif t == "voice": return voice_tense.analyze(text)
+        elif t in ["characters", "character"]: return characters.analyze(text)
+        elif t == "continuity": return continuity.analyze(text)
+        elif t == "themes": return themes.analyze(text)
+        elif t == "editor":
+            # Pass pre-computed results to editor to avoid re-running sub-analyzers
+            precomputed = {k: v for k, v in results.items() if k != "editor" and not isinstance(v, dict) or "error" not in (v or {})}
+            try:
+                return editor.analyze(text, precomputed=precomputed)
+            except TypeError:
+                return editor.analyze(text)
+        # Suite tools (6)
+        elif t in suite_tools:
+            return suite_run(t, text)
+        # Not yet implemented (5): cadence, motifs, anchors, voice_dna, reader_perception
+        elif t in ("cadence", "motifs", "anchors", "voice_dna", "reader_perception"):
+            return {"error": f"Tool '{t}' is listed in the catalog but not yet implemented. Coming soon."}
+        else:
+            return {"error": f"Unknown tool '{t}'"}
+
     if use_rich:
         with Progress(SpinnerColumn(), TextColumn("[progress.description]{task.description}"), TimeElapsedColumn(), console=console) as progress:
             task = progress.add_task(f"Analyzing {total_tools} tools...", total=total_tools)
             for i, t in enumerate(tools_to_run, 1):
                 progress.update(task, description=f"[{i}/{total_tools}] Running {t}...")
                 try:
-                    if t == "craft": results["craft"] = craft.analyze(text)
-                    elif t == "voice": results["voice_tense"] = voice_tense.analyze(text)
-                    elif t in ["characters", "character"]: results["characters"] = characters.analyze(text)
-                    elif t == "continuity": results["continuity"] = continuity.analyze(text)
-                    elif t == "themes": results["themes"] = themes.analyze(text)
-                    elif t == "editor": results["editor"] = editor.analyze(text)
+                    result = run_tool(t, text)
+                    if result:
+                        results[t] = result
+                        progress.console.print(f"  ✓ [{i}/{total_tools}] {t} — done")
                     else:
-                        progress.console.print(f"  [red]Unknown tool '{t}'[/red]")
-                        continue
-                    progress.console.print(f"  ✓ [{i}/{total_tools}] {t} — done")
+                        progress.console.print(f"  [yellow]✗ [{i}/{total_tools}] {t} — no result[/yellow]")
                 except KeyboardInterrupt:
                     progress.console.print(f"\n  [yellow]Interrupted. {i-1} of {total_tools} tools completed and saved.[/yellow]")
                     break
                 except Exception as e:
-                    progress.console.print(f"  [red]✗ {t} — error: {e}[/red]")
+                    progress.console.print(f"  [red]✗ [{i}/{total_tools}] {t} — error: {e}[/red]")
+                    results[t] = {"error": str(e)}
                 progress.advance(task)
     else:
         for i, t in enumerate(tools_to_run, 1):
             click.echo(f"  [{i}/{total_tools}] Running {t}...", nl=False)
             try:
-                if t == "craft": results["craft"] = craft.analyze(text)
-                elif t == "voice": results["voice_tense"] = voice_tense.analyze(text)
-                elif t in ["characters", "character"]: results["characters"] = characters.analyze(text)
-                elif t == "continuity": results["continuity"] = continuity.analyze(text)
-                elif t == "themes": results["themes"] = themes.analyze(text)
-                elif t == "editor": results["editor"] = editor.analyze(text)
+                result = run_tool(t, text)
+                if result:
+                    results[t] = result
+                    click.echo(" done")
                 else:
-                    click.echo(f" unknown tool '{t}'")
-                    continue
-                click.echo(" done")
+                    click.echo(" no result")
             except KeyboardInterrupt:
                 click.echo(f"\n  Interrupted. {i-1} of {total_tools} tools completed.")
                 break
             except Exception as e:
                 click.echo(f" error: {e}")
-            results[t] = {"error": str(e)}
+                results[t] = {"error": str(e)}
 
     # Save to database
     for t, result in results.items():
