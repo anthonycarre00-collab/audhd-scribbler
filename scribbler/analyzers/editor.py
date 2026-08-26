@@ -212,6 +212,94 @@ def _detect_memoir_patterns(text: str, craft_result: Dict, voice_result: Dict, c
             ]
         ))
 
+    # AUDHD-aware patterns
+    patterns.extend(_detect_audhd_patterns(text, craft_result, voice_result, word_count))
+
+    return patterns
+
+
+def _detect_audhd_patterns(text: str, craft_result: Dict, voice_result: Dict, word_count: int) -> List[Dict]:
+    """Detect AUDHD-specific writing patterns: hyperfocus, sensory clustering, associative jumps, masking language."""
+    patterns = []
+
+    # Hyperfocus passage: very long sentences clustered together
+    rhythm = craft_result.get("sentence_length_rhythm", {})
+    very_long_pct = rhythm.get("very_long_sentences_pct", 0)
+    if very_long_pct > 15:
+        patterns.append(format_flag(
+            "hyperfocus_passage",
+            "whole chapter",
+            f"{very_long_pct:.0f}% of sentences are very long (40+ words)",
+            "this can indicate a hyperfocus passage — an AUDHD writing strength where depth accumulates; it can be powerful (immersive depth) or stretch reader stamina",
+            [
+                "check if the depth serves the reader or if a brief scene-break would give them breathing room",
+                "notice whether the hyperfocus is on a single topic (AUDHD trait) or scattered (revise for focus)",
+                "keep as-is if the sustained depth is intentional and the reader can follow",
+            ]
+        ))
+
+    # Sensory clustering: sensory detail present in some passages but absent in others
+    sensory = craft_result.get("sensory_density", {})
+    missing = sensory.get("missing_senses", [])
+    by_sense = sensory.get("by_sense", {})
+    if len(missing) >= 3 and by_sense:
+        patterns.append(format_flag(
+            "sensory_clustering",
+            "whole chapter",
+            f"sensory detail clusters in {len(by_sense)} sense(s) but is absent in {len(missing)}: {', '.join(missing)}",
+            "this is common in AUDHD writing — senses fire together or not at all; the clustering can create vivid immersion in some passages and flatness in others",
+            [
+                "check if the clustering is intentional (some scenes are sensory, others are reflective)",
+                "try distributing one sensory beat from a cluster into a low-density passage",
+                "keep as-is if the clustering mirrors the narrator's sensory experience",
+            ]
+        ))
+
+    # Associative jumps: frequent tense shifts without transitions
+    tense_shifts = voice_result.get("tense_shifts", [])
+    if len(tense_shifts) > 8:
+        patterns.append(format_flag(
+            "associative_jump",
+            f"{len(tense_shifts)} tense shifts",
+            f"frequent tense shifts ({len(tense_shifts)}) without clear transition markers",
+            "this can be associative thinking (an AUDHD cognitive style where the mind jumps between times/modes) rather than error; it can create a layered, non-linear feel or disorient readers",
+            [
+                "check if each shift marks a deliberate move between experiencing and narrating self",
+                "add a single transition phrase at the largest jump to orient the reader",
+                "keep as-is if the associative structure is intentional and mirrors the narrator's mental movement",
+            ]
+        ))
+
+    # Masking language: excessive explanation/justification
+    masking_cues = len(re.findall(r'\b(i don\'t mean|i\'m not saying|to be clear|just to be clear|for the record|i should explain|i want to clarify|let me explain|i need to explain)\b', text, re.IGNORECASE))
+    if masking_cues / max(word_count, 1) * 1000 > 2:
+        patterns.append(format_flag(
+            "masking_language",
+            "whole chapter",
+            f"excessive explanation/justification language detected ({masking_cues} instances)",
+            "this can read as masking — explaining yourself before being asked, an AUDHD trait where you anticipate and defuse potential criticism; it can create distance between the narrator and the reader",
+            [
+                "check if the explanation is necessary or if the reader can infer the context",
+                "try removing one explanation and see if the scene carries itself",
+                "keep as-is if the explaining is the narrator's authentic voice or serves the story",
+            ]
+        ))
+
+    # Stimming language: repetitive self-soothing descriptions
+    stimming_cues = len(re.findall(r'\b(rocking|rocked back|tapping|tapped|humming|hummed|fidget|fidgeting|repeating|repeatedly)\b', text, re.IGNORECASE))
+    if stimming_cues >= 3:
+        patterns.append(format_flag(
+            "stimming_description",
+            f"{stimming_cues} instances",
+            f"stimming/self-soothing behaviors described ({stimming_cues} instances)",
+            "describing stimming can be a powerful AUDHD-specific detail — it grounds the reader in the body's self-regulation; it can also feel clinical if over-explained",
+            [
+                "check if the stimming is shown (described in action) or told (explained why)",
+                "notice whether the stimming moments carry emotional weight or feel like cataloguing",
+                "keep as-is if the descriptions ground the narrator's experience authentically",
+            ]
+        ))
+
     return patterns
 
 

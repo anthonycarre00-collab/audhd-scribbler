@@ -397,6 +397,47 @@ def analyze(file_path: str, tool):
         # Print key metrics
         _print_key_metrics(t, result)
 
+    # Cross-tool synthesis report
+    if len(results) >= 2:
+        try:
+            from . import synthesis
+            click.echo(f"\n{'='*60}")
+            click.echo(f"  SYNTHESIS — {path.name}")
+            click.echo(f"{'='*60}\n")
+
+            syn = synthesis.generate(results, len(text.split()))
+
+            click.echo(f"  {syn['summary']}\n")
+
+            click.echo(f"  VOICE CONSISTENCY")
+            click.echo(f"    {syn['voice_consistency']}\n")
+
+            click.echo(f"  NARRATOR DISTANCE")
+            click.echo(f"    {syn['narrator_distance']}\n")
+
+            if syn["recurring_signals"]:
+                click.echo(f"  RECURRING SIGNALS ACROSS TOOLS")
+                for sig in syn["recurring_signals"]:
+                    click.echo(f"    • {sig}")
+                click.echo()
+
+            click.echo(f"  TOP THINGS TO NOTICE")
+            for i, item in enumerate(syn["top_things_to_notice"], 1):
+                click.echo(f"    {i}. {item[:120]}")
+            click.echo()
+
+            click.echo(f"  AUDHD-AWARE NOTES")
+            for note in syn["audhd_aware_notes"]:
+                click.echo(f"    • {note}")
+            click.echo()
+
+            click.echo(f"  WHAT THIS DOES NOT MEAN")
+            for note in syn["what_this_does_not_mean"]:
+                click.echo(f"    • {note}")
+            click.echo()
+        except Exception as e:
+            click.echo(f"\n  [Synthesis skipped: {e}]")
+
     # Export report
     report_path = export.export_analysis_report(str(path), results)
     click.echo(f"\n  Report saved to: {report_path}")

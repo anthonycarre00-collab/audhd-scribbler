@@ -68,24 +68,25 @@ def print_menu():
     print("    7.  Tag coverage report  (prove full document was tagged)")
     print()
     print("  ── ANALYSIS ─────────────────────────────────")
-    print("    8.  Analyze a chapter  (run the full analysis suite)")
+    print("    8.  Analyze a chapter  (pick tools, get full report)")
     print("    9.  Analyze ALL chapters  (batch analysis)")
-    print("    10. Market research  (find comparable titles)")
-    print("    11. Find links between files  (what connects to what)")
+    print("    10. Manuscript-level analysis  (cross-chapter: motifs, anchors, voice DNA)")
+    print("    11. Market research  (find comparable titles)")
+    print("    12. Find links between files  (what connects to what)")
     print()
     print("  ── VIEW ─────────────────────────────────────")
-    print("    12. Open the dashboard  (visual overview)")
-    print("    13. Show project stats  (word count, file count)")
+    print("    13. Open the dashboard  (visual overview)")
+    print("    14. Show project stats  (word count, file count)")
     print()
     print("  ── EXPORT & MANAGE ──────────────────────────")
-    print("    14. Export a file  (to Word, markdown, or plain text)")
-    print("    15. Export all tagged files  (batch export)")
-    print("    16. Delete a file  (remove from project)")
+    print("    15. Export a file  (to Word, markdown, or plain text)")
+    print("    16. Export all tagged files  (batch export)")
+    print("    17. Delete a file  (remove from project)")
     print()
     print("  ── HELP & SETTINGS ──────────────────────────")
-    print("    17. How does tagging work?  (understand the system)")
-    print("    18. Settings  (Z.ai API key, theme, etc.)")
-    print("    19. Quit")
+    print("    18. How does tagging work?  (understand the system)")
+    print("    19. Settings  (Z.ai API key, theme, etc.)")
+    print("    20. Quit")
     print()
 
 
@@ -93,7 +94,7 @@ def get_choice(prompt="  Pick a number: "):
     try:
         return input(prompt).strip()
     except (EOFError, KeyboardInterrupt):
-        return "19"
+        return "20"
 
 
 def pause():
@@ -375,20 +376,120 @@ def action_next():
 
 
 def action_analyze():
+    """Analyze a chapter with tool picker."""
+    from scribbler.analysis_catalog import ANALYSIS_CATALOG
+
     print_header()
     print("  ANALYZE A CHAPTER")
     print("  " + "-" * 52)
     print()
-    print("  Pick a file to analyze. The analysis suite will run")
-    print("  all 6 analyzers: craft, voice/tense, characters, continuity,")
-    print("  themes, and editor-style suggestions.")
+    print("  Pick a file to analyze, then choose which tools to run.")
     print()
 
     file_path = pick_file("  Which file do you want to analyze?")
-    if file_path:
+    if not file_path:
+        pause()
+        return
+
+    # Tool picker
+    print_header()
+    print("  ANALYZE A CHAPTER")
+    print("  " + "-" * 52)
+    print()
+    print(f"  File: {os.path.basename(file_path)}")
+    print()
+    print("  Which analysis tools do you want to run?")
+    print()
+    print("    a.  All 12 implemented tools (recommended)")
+    print("    r.  Recommended set for draft stage (craft, voice, characters,")
+    print("        continuity, themes, editor, repetition, pacing, structure)")
+    print("    p.  Pick specific tools")
+    print()
+
+    # Show all 17 tools grouped
+    print("  Available tools:")
+    groups = {}
+    for key, info in ANALYSIS_CATALOG.items():
+        group = info.get("group", "Other")
+        if group not in groups:
+            groups[group] = []
+        groups[group].append((key, info))
+
+    for group_name in ["Prose", "Story", "Structure", "Editorial", "Accuracy", "Writer", "Optional"]:
+        if group_name in groups:
+            print(f"\n  {group_name.upper()}:")
+            for key, info in groups[group_name]:
+                title = info.get("title", key)
+                purpose = info.get("purpose", "")[:50]
+                stage = info.get("stage", "")
+                print(f"    {key:20s} — {title} ({stage})")
+
+    print()
+    choice = get_choice("  Choice (a/r/p): ")
+
+    if choice == "a":
+        tools = []
+    elif choice == "r":
+        tools = ["craft", "voice", "characters", "continuity", "themes", "editor",
+                 "repetition", "pacing", "structure"]
+    elif choice == "p":
         print()
-        input("  Press Enter to start analysis...")
+        print("  Type the tool names separated by spaces (e.g., craft voice themes)")
+        print("  Or type 'all' for all tools")
+        tool_input = input("  Tools: ").strip()
+        if tool_input.lower() == "all":
+            tools = []
+        else:
+            tools = tool_input.split()
+    else:
+        tools = []
+
+    print()
+    input("  Press Enter to start analysis...")
+
+    if tools:
+        tool_args = []
+        for t in tools:
+            tool_args.extend(["--tool", t])
+        run_cli("analyze", file_path, *tool_args)
+    else:
         run_cli("analyze", file_path)
+
+
+def action_analyze_manuscript():
+    """Run manuscript-level analysis across all chapters."""
+    print_header()
+    print("  MANUSCRIPT-LEVEL ANALYSIS")
+    print("  " + "-" * 52)
+    print()
+    print("  This runs cross-chapter analysis tools:")
+    print("    • motifs — recurring images across chapters")
+    print("    • anchors — opening/closing gesture patterns")
+    print("    • voice_dna — voice drift between chapters")
+    print()
+    print("  Requires 2+ chapters in /chapters, /drafts, or /final.")
+    print()
+
+    # Check chapter count
+    chapters = []
+    for folder in ["chapters", "drafts", "final"]:
+        folder_path = PROJECT_ROOT / folder
+        if folder_path.exists():
+            for ext in ["*.txt", "*.md"]:
+                for f in folder_path.glob(ext):
+                    if f.name.upper() != "README.MD":
+                        chapters.append(f)
+
+    if len(chapters) < 2:
+        print(f"  Found {len(chapters)} chapter(s). Need at least 2 for manuscript analysis.")
+        print("  Move more files to /chapters or /drafts and try again.")
+        pause()
+        return
+
+    print(f"  Found {len(chapters)} chapter(s). Ready to analyze.")
+    print()
+    input("  Press Enter to start manuscript analysis...")
+    run_cli("analyze-manuscript")
 
 
 def action_analyze_all():
@@ -1322,24 +1423,26 @@ def main():
         elif choice == "9":
             action_analyze_all()
         elif choice == "10":
-            action_market()
+            action_analyze_manuscript()
         elif choice == "11":
-            action_links()
+            action_market()
         elif choice == "12":
-            action_dashboard()
+            action_links()
         elif choice == "13":
-            action_stats()
+            action_dashboard()
         elif choice == "14":
-            action_export()
+            action_stats()
         elif choice == "15":
-            action_export_all()
+            action_export()
         elif choice == "16":
-            action_delete_file()
+            action_export_all()
         elif choice == "17":
-            action_help_tagging()
+            action_delete_file()
         elif choice == "18":
-            action_settings()
+            action_help_tagging()
         elif choice == "19":
+            action_settings()
+        elif choice == "20":
             print_header()
             print("  Happy scribbling.")
             print()
@@ -1348,7 +1451,7 @@ def main():
             print()
             break
         else:
-            print("\n  Pick a number from 1 to 19.")
+            print("\n  Pick a number from 1 to 20.")
             pause()
 
 
