@@ -48,6 +48,7 @@ from . import llm
 from . import search as search_module
 from .file_io import read_text_file
 from .analyzers import craft, voice_tense, characters, continuity, themes, editor, market as market_analyzer
+from .analyzers import cadence, motifs, anchors, voice_dna, reader_perception
 from .analysis_suite import run as suite_run
 from .analysis_catalog import ANALYSIS_CATALOG
 from .dashboard import generate as generate_dashboard
@@ -308,9 +309,17 @@ def analyze(file_path: str, tool):
         # Suite tools (6)
         elif t in suite_tools:
             return suite_run(t, text)
-        # Not yet implemented (5): cadence, motifs, anchors, voice_dna, reader_perception
-        elif t in ("cadence", "motifs", "anchors", "voice_dna", "reader_perception"):
-            return {"error": f"Tool '{t}' is listed in the catalog but not yet implemented. Coming soon."}
+        # New analyzers (5)
+        elif t == "cadence":
+            return cadence.analyze(text)
+        elif t == "motifs":
+            return motifs.analyze(text=text)
+        elif t == "anchors":
+            return anchors.analyze(text=text)
+        elif t == "voice_dna":
+            return voice_dna.analyze(text)
+        elif t == "reader_perception":
+            return reader_perception.analyze(text)
         else:
             return {"error": f"Unknown tool '{t}'"}
 
@@ -489,6 +498,151 @@ def analyze_all():
 
     click.echo(f"\n  ✓ All chapters analyzed.")
     click.echo(f"  Run 'scribbler dashboard' to see the overview.")
+
+
+@cli.command(name="analyze-manuscript")
+@click.option("--tool", "-t", multiple=True, help="Specific manuscript-level tool(s): motifs, anchors, voice_dna")
+def analyze_manuscript(tool):
+    """Run manuscript-level analysis across ALL chapters.
+
+    Manuscript-level tools (motifs, anchors) need multiple chapters to work.
+    They find cross-chapter patterns: recurring images, structural anchors, voice drift.
+    """
+    # Collect all chapters
+    chapters = []
+    for folder in ["chapters", "drafts", "final"]:
+        folder_path = PROJECT_ROOT / folder
+        if folder_path.exists():
+            for ext in ["*.txt", "*.md"]:
+                for f in folder_path.glob(ext):
+                    if f.name.upper() == "README.MD":
+                        continue
+                    try:
+                        content = read_text_file(f)
+                        # Strip frontmatter
+                        if content.startswith("---"):
+                            end = content.find("---", 3)
+                            if end != -1:
+                                content = content[end + 3:].strip()
+                        import re
+                        content = re.sub(r'<!-- SCRIBBLER SUMMARY[\s\S]*?-->', '', content).strip()
+                        chapters.append({"filename": f.name, "text": content, "path": str(f)})
+                    except Exception as e:
+                        click.echo(f"  Warning: could not read {f.name}: {e}")
+
+    if not chapters:
+        click.echo("  No chapters found in /chapters, /drafts, or /final.")
+        click.echo("  Move tagged files to /chapters or /drafts first.")
+        return
+
+    click.echo(f"\n  Analyzing {len(chapters)} chapter(s) at manuscript level...")
+
+    # Default tools for manuscript analysis
+    if tool:
+        tools_to_run = list(tool)
+    else:
+        tools_to_run = ["motifs", "anchors", "voice_dna"]
+    total_tools = len(tools_to_run)
+
+    # Try rich for progress
+    try:
+        from rich.console import Console
+        from rich.progress import Progress, SpinnerColumn, TextColumn, TimeElapsedColumn
+        console = Console()
+        use_rich = True
+    except ImportError:
+        use_rich = False
+
+    results = {}
+
+    def run_ms_tool(t, chapters):
+        if t == "motifs":
+            return motifs.analyze(chapters=chapters)
+        elif t == "anchors":
+            return anchors.analyze(chapters=chapters)
+        elif t == "voice_dna":
+            # Voice DNA: analyze the first chapter against the rest as approved samples
+            if len(chapters) >= 2:
+                target = chapters[0]["text"]
+                approved = [ch["text"] for ch in chapters[1:]]
+                return voice_dna.analyze(target, approved_samples=approved)
+            else:
+                return voice_dna.analyze(chapters[0]["text"])
+        else:
+            return {"error": f"Unknown manuscript tool '{t}'"}
+
+    if use_rich:
+        with Progress(SpinnerColumn(), TextColumn("[progress.description]{task.description}"), TimeElapsedColumn(), console=console) as progress:
+            task = progress.add_task(f"Manuscript analysis ({total_tools} tools)...", total=total_tools)
+            for i, t in enumerate(tools_to_run, 1):
+                progress.update(task, description=f"[{i}/{total_tools}] Running {t}...")
+                try:
+                    result = run_ms_tool(t, chapters)
+                    if result:
+                        results[t] = result
+                        progress.console.print(f"  ✓ [{i}/{total_tools}] {t} — done")
+                except KeyboardInterrupt:
+                    progress.console.print(f"\n  [yellow]Interrupted. {i-1} of {total_tools} tools completed.[/yellow]")
+                    break
+                except Exception as e:
+                    progress.console.print(f"  [red]✗ {t} — error: {e}[/red]")
+                progress.advance(task)
+    else:
+        for i, t in enumerate(tools_to_run, 1):
+            click.echo(f"  [{i}/{total_tools}] Running {t}...", nl=False)
+            try:
+                result = run_ms_tool(t, chapters)
+                if result:
+                    results[t] = result
+                    click.echo(" done")
+            except KeyboardInterrupt:
+                click.echo(f"\n  Interrupted.")
+                break
+            except Exception as e:
+                click.echo(f" error: {e}")
+
+    # Output results
+    click.echo(f"\n{'='*60}")
+    click.echo(f"  MANUSCRIPT ANALYSIS REPORT ({len(chapters)} chapters)")
+    click.echo(f"{'='*60}\n")
+
+    for t, result in results.items():
+        if "error" in result:
+            click.echo(f"\n  [{t.upper()}] Error: {result['error']}")
+            continue
+
+        click.echo(f"\n  [{'='*50}]")
+        click.echo(f"  [{t.upper()}]")
+        click.echo(f"  [{'='*50}]")
+
+        if "summary" in result:
+            click.echo(f"\n  {result['summary']}")
+
+        if "observations" in result:
+            click.echo(f"\n  OBSERVATIONS ({len(result['observations'])}):")
+            for obs in result["observations"]:
+                if isinstance(obs, dict):
+                    click.echo(f"\n    [{obs.get('category', '').replace('_', ' ').upper()}]")
+                    click.echo(f"    {obs.get('formatted', '')}")
+
+        # Key metrics
+        for key in ["candidate_motifs", "phrase_echoes", "opening_gesture_counts",
+                     "closing_gesture_counts", "anchor_stability_score", "drift_assessment"]:
+            if key in result:
+                val = result[key]
+                if isinstance(val, list):
+                    click.echo(f"\n  {key.replace('_', ' ').title()} ({len(val)}):")
+                    for item in val[:5]:
+                        if isinstance(item, dict):
+                            click.echo(f"    • {item.get('image', item.get('phrase', item.get('pattern', str(item)[:80])))}")
+                elif isinstance(val, dict):
+                    click.echo(f"\n  {key.replace('_', ' ').title()}:")
+                    for k, v in list(val.items())[:5]:
+                        click.echo(f"    • {k}: {v}")
+                else:
+                    click.echo(f"  {key.replace('_', ' ').title()}: {val}")
+
+    click.echo()
 
 
 @cli.command()
