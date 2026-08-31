@@ -74,7 +74,10 @@ def run_tool(key,text,all_files):
 
 def _parse_multipart(body_bytes, boundary):
  """Parse multipart form data without cgi module (deprecated in 3.13)."""
- parts = body_bytes.split(b("--" + boundary))
+ if isinstance(boundary, str):
+  boundary = boundary.encode("utf-8")
+ delimiter = b"--" + boundary
+ parts = body_bytes.split(delimiter)
  files = []
  fields = {}
  for part in parts:
@@ -136,7 +139,7 @@ class Handler(BaseHTTPRequestHandler):
    return self.send_json({"ok":False,"error":"Expected multipart form data"},400)
   boundary = ct.split("boundary=")[-1].strip().strip('"')
   raw = self.read_body()
-  uploaded, fields = _parse_multipart(raw, boundary.encode())
+  uploaded, fields = _parse_multipart(raw, boundary)
   destination = fields.get("destination","raw-dumps")
   if destination not in ("raw-dumps","triage","chapters","drafts","final"):
    return self.send_json({"ok":False,"error":f"Invalid destination: {destination}"},400)
