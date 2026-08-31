@@ -1,7 +1,6 @@
 @echo off
 cd /d "%~dp0"
 title The Audhd Scribbler
-
 set PYTHONIOENCODING=utf-8
 
 REM Check if installed
@@ -31,8 +30,8 @@ if errorlevel 1 (
     exit /b 1
 )
 
-REM Launch the menu
-python -m scribbler.menu
+REM Launch the webapp UI (opens in browser automatically)
+python ScribblerWindows.py
 
 echo.
 pause
