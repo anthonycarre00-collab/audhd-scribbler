@@ -3,9 +3,10 @@ from __future__ import annotations
 import html,json,os,re,urllib.parse
 from http.server import BaseHTTPRequestHandler,ThreadingHTTPServer
 from pathlib import Path
+from datetime import datetime
 from . import db,llm,tagger,safety
 from .config import PROJECT_ROOT,FOLDERS
-from .file_io import read_text_file
+from .file_io import read_text_file, write_text_file
 from .analysis_catalog import ANALYSIS_CATALOG
 from .analyzers import craft,voice_tense,characters,continuity,themes,editor
 
@@ -52,9 +53,11 @@ def files():
   root=PROJECT_ROOT/folder
   if root.exists():
    for p in root.iterdir():
-    if p.is_file() and p.suffix.lower() in {".txt",".md",".text"}:
-     rel=str(p.relative_to(PROJECT_ROOT))
-     if rel not in seen:out.append({"path":rel,"filename":p.name,"folder":folder,"word_count":len(body(p).split()),"status":"unindexed","last_analyzed":""})
+    if p.is_file() and p.suffix.lower() in {".txt",".md",".text"} and p.name.upper()!="README.MD":
+     resolved=str(p.resolve())
+     if resolved not in seen:
+      seen.add(resolved)
+      out.append({"path":str(p),"filename":p.name,"folder":folder,"word_count":len(body(p).split()),"status":"unindexed","last_analyzed":""})
  return sorted(out,key=lambda x:(x["folder"],x["filename"].lower()))
 def tag_preview(p,use_ai=True):
  text=body(p)
@@ -68,6 +71,28 @@ def run_tool(key,text,all_files):
   if key=="characters":return fn(text,all_files=all_files)
   return fn(text)
  return suite_run(key,text)
+
+def _parse_multipart(body_bytes, boundary):
+ """Parse multipart form data without cgi module (deprecated in 3.13)."""
+ parts = body_bytes.split(b("--" + boundary))
+ files = []
+ fields = {}
+ for part in parts:
+  if part in (b"", b"--", b"--\r\n", b"\r\n"): continue
+  if part.startswith(b"\r\n"): part = part[2:]
+  if part.endswith(b"\r\n"): part = part[:-2]
+  if b"\r\n\r\n" not in part: continue
+  header_part, content = part.split(b"\r\n\r\n", 1)
+  headers = header_part.decode("utf-8", errors="replace")
+  cd = re.search(r'Content-Disposition:.*?name="([^"]+)"(?:;\s*filename="([^"]*)")?', headers, re.I)
+  if not cd: continue
+  name = cd.group(1)
+  filename = cd.group(2)
+  if filename:
+   files.append((name, filename, content))
+  else:
+   fields[name] = content.decode("utf-8", errors="replace")
+ return files, fields
 
 class Handler(BaseHTTPRequestHandler):
  server_version="AudhdScribbler/4.0"
@@ -97,31 +122,164 @@ class Handler(BaseHTTPRequestHandler):
    if p=="/api/tag":return self.tag()
    if p=="/api/analyze":return self.analyze()
    if p=="/api/export":return self.export()
+   if p=="/api/delete":return self.delete_file()
    if p=="/api/backup":return self.send_json({"ok":True,"path":safety.export_project_zip()})
    return self.send_json({"ok":False,"error":"Unknown action"},404)
   except Exception as e:return self.send_json({"ok":False,"error":str(e)},400)
  def html(self):
   return self.send_html(APP)
 
+ def import_files(self):
+  """Handle file upload via multipart form data."""
+  ct = self.headers.get("Content-Type","")
+  if "multipart/form-data" not in ct:
+   return self.send_json({"ok":False,"error":"Expected multipart form data"},400)
+  boundary = ct.split("boundary=")[-1].strip().strip('"')
+  raw = self.read_body()
+  uploaded, fields = _parse_multipart(raw, boundary.encode())
+  destination = fields.get("destination","raw-dumps")
+  if destination not in ("raw-dumps","triage","chapters","drafts","final"):
+   return self.send_json({"ok":False,"error":f"Invalid destination: {destination}"},400)
+  dest_folder = PROJECT_ROOT / destination
+  dest_folder.mkdir(parents=True, exist_ok=True)
+  count = 0
+  errors = []
+  for _, filename, content in uploaded:
+   try:
+    name = safe_name(filename)
+    dest = unique(dest_folder, name)
+    dest.write_bytes(content)
+    count += 1
+   except Exception as e:
+    errors.append(f"{filename}: {e}")
+  return self.send_json({"ok":True,"message":f"Imported {count} file(s) into {destination}","errors":errors})
+
+ def note(self):
+  """Save a quick note to the Inbox."""
+  b = json.loads(self.read_body() or b"{}")
+  text = (b.get("text") or "").strip()
+  if not text:
+   return self.send_json({"ok":False,"error":"Note is empty"},400)
+  title = (b.get("title") or "").strip()
+  name = safe_name((title or f"note-{datetime.now():%Y%m%d-%H%M%S}") + ".txt")
+  dest = unique(PROJECT_ROOT / "raw-dumps", name)
+  write_text_file(dest, text)
+  return self.send_json({"ok":True,"message":"Saved to Inbox"})
+
+ def preview(self):
+  """Preview tags for selected files without applying."""
+  b = json.loads(self.read_body() or b"{}")
+  paths = b.get("paths") or []
+  use_ai = bool(b.get("use_ai", False))
+  if not paths:
+   return self.send_json({"ok":False,"error":"Select one or more files first"},400)
+  previews = []
+  errors = []
+  for raw_path in paths:
+   try:
+    p = find_file(raw_path)
+    previews.append(tag_preview(p, use_ai))
+   except Exception as e:
+    errors.append(str(e))
+  return self.send_json({"ok":True,"preview":previews,"errors":errors})
+
+ def tag(self):
+  """Apply tags to selected files."""
+  b = json.loads(self.read_body() or b"{}")
+  paths = b.get("paths") or []
+  use_llm = bool(b.get("use_llm", True))
+  if not paths:
+   return self.send_json({"ok":False,"error":"Select one or more files first"},400)
+  tagged = []
+  errors = []
+  for raw_path in paths:
+   try:
+    p = find_file(raw_path)
+    meta = tagger.tag_file(str(p), use_llm=use_llm)
+    tagged.append(p.name)
+   except Exception as e:
+    errors.append(f"{p.name if 'p' in dir() else raw_path}: {e}")
+  return self.send_json({"ok":True,"tagged":tagged,"errors":errors})
+
+ def analyze(self):
+  """Run analysis tools on selected manuscript files."""
+  b = json.loads(self.read_body() or b"{}")
+  paths = b.get("paths") or []
+  tools = b.get("tools") or []
+  if not paths:
+   return self.send_json({"ok":False,"error":"Select one or more manuscript files first"},400)
+  if not tools:
+   return self.send_json({"ok":False,"error":"Choose at least one analysis tool"},400)
+  all_files = files()
+  results = []
+  for raw_path in paths:
+   try:
+    p = find_file(raw_path)
+    text = body(p)
+    per_file = {}
+    for tool_key in tools:
+     if tool_key not in TOOLS:
+      per_file[tool_key] = {"error": f"Unknown tool: {tool_key}"}
+      continue
+     try:
+      result = run_tool(tool_key, text, all_files)
+      per_file[tool_key] = js(result)
+      try:
+       db.save_analysis(str(p.resolve()), tool_key, result)
+      except Exception:
+       pass
+     except Exception as e:
+      per_file[tool_key] = {"error": str(e)}
+    results.append({"filename": p.name, "results": per_file})
+   except Exception as e:
+    results.append({"filename": raw_path, "results": {}, "error": str(e)})
+  return self.send_json({"ok":True,"results":results,"message":f"Analyzed {len(paths)} file(s) with {len(tools)} tool(s)"})
+
  def export(self):
-  """Export a file or analysis report. Used by the /api/export endpoint."""
-  body = json.loads(self.read_body() or b"{}")
-  file_path = body.get("path") or body.get("file")
-  fmt = body.get("format", "docx")
+  """Export a file to docx, md, or txt."""
+  b = json.loads(self.read_body() or b"{}")
+  file_path = b.get("path") or b.get("file")
+  fmt = b.get("format") or b.get("kind") or "docx"
   if not file_path:
-   return self.send_json({"ok": False, "error": "No file path provided"}, 400)
+   return self.send_json({"ok":False,"error":"No file path provided"},400)
   try:
+   p = find_file(file_path)
    if fmt == "docx":
-    out = export_docx(file_path)
+    out = export_docx(str(p))
    elif fmt == "md":
-    out = export_markdown(file_path)
+    out = export_markdown(str(p))
    elif fmt == "txt":
-    out = export_plain_text(file_path)
+    out = export_plain_text(str(p))
    else:
-    return self.send_json({"ok": False, "error": f"Unknown format: {fmt}"}, 400)
-   return self.send_json({"ok": True, "path": out})
+    return self.send_json({"ok":False,"error":f"Unknown format: {fmt}"},400)
+   return self.send_json({"ok":True,"path":out})
   except Exception as e:
-   return self.send_json({"ok": False, "error": str(e)}, 500)
+   return self.send_json({"ok":False,"error":str(e)},500)
+
+ def delete_file(self):
+  """Delete a file from the project (moves to archive)."""
+  b = json.loads(self.read_body() or b"{}")
+  file_path = b.get("path")
+  if not file_path:
+   return self.send_json({"ok":False,"error":"No file path provided"},400)
+  try:
+   p = find_file(file_path)
+   # Move to archive instead of permanent delete
+   archive = PROJECT_ROOT / "archive"
+   archive.mkdir(exist_ok=True)
+   dest = unique(archive, p.name)
+   p.rename(dest)
+   # Remove from database
+   conn = db.get_db()
+   conn.execute("DELETE FROM files WHERE path = ?", (str(p.resolve()),))
+   conn.execute("DELETE FROM analysis_results WHERE file_path = ?", (str(p.resolve()),))
+   conn.execute("INSERT INTO activity_log (timestamp, action, file_path, details) VALUES (?, ?, ?, ?)",
+    (datetime.now().isoformat(), "delete", str(p.resolve()), f"Moved to archive/{dest.name}"))
+   conn.commit()
+   conn.close()
+   return self.send_json({"ok":True,"message":f"Moved to archive/{dest.name}"})
+  except Exception as e:
+   return self.send_json({"ok":False,"error":str(e)},500)
 
 def run_server(open_browser=False):
  return ThreadingHTTPServer(("127.0.0.1",0),Handler)

@@ -171,3 +171,4 @@ class _BodyReader:
         if self._done: return b""
         self._done = True
         return self._data
+    def close(self): pass
