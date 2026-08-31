@@ -8,6 +8,9 @@ from .config import PROJECT_ROOT,FOLDERS
 from .file_io import read_text_file
 from .analysis_catalog import ANALYSIS_CATALOG
 from .analyzers import craft,voice_tense,characters,continuity,themes,editor
+
+# Default empty APP HTML — gets replaced by release_ui when ScribblerWindows.py runs
+APP = "<!doctype html><html><body><h1>Audhd Scribbler</h1><p>Loading… Run ScribblerWindows.py to start the full UI.</p></body></html>"
 from .analysis_suite import run as suite_run
 from .writer_intelligence import cadence_rhythm,motif_scan,structural_anchors,voice_report,chapter_comparison,ai_perceptions
 from .export import export_markdown,export_plain_text,export_docx,export_analysis_report
@@ -71,6 +74,8 @@ class Handler(BaseHTTPRequestHandler):
  def log_message(self,*a):pass
  def send_json(self,v,status=200):
   d=json.dumps(v,ensure_ascii=False).encode();self.send_response(status);self.send_header("Content-Type","application/json; charset=utf-8");self.send_header("Cache-Control","no-store");self.send_header("Content-Length",str(len(d)));self.end_headers();self.wfile.write(d)
+ def send_html(self,html_str):
+  b=html_str.encode("utf-8");self.send_response(200);self.send_header("Content-Type","text/html; charset=utf-8");self.send_header("Cache-Control","no-store");self.send_header("Content-Length",str(len(b)));self.end_headers();self.wfile.write(b)
  def read_body(self):
   n=int(self.headers.get("Content-Length","0"));
   if n>60*1024*1024:raise ValueError("Request is too large")
@@ -96,8 +101,7 @@ class Handler(BaseHTTPRequestHandler):
    return self.send_json({"ok":False,"error":"Unknown action"},404)
   except Exception as e:return self.send_json({"ok":False,"error":str(e)},400)
  def html(self):
-  from . import ui
-  return self.send_json({"ok":True})
+  return self.send_html(APP)
 
  def export(self):
   """Export a file or analysis report. Used by the /api/export endpoint."""
