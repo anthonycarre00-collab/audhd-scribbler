@@ -1,0 +1,72 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>The Audhd Scribbler</title>
+<link rel="stylesheet" href="styles/tokens.css">
+<link rel="stylesheet" href="styles/base.css">
+<link rel="stylesheet" href="styles/components.css">
+<link rel="stylesheet" href="styles/timers.css">
+<link rel="stylesheet" href="styles/audhd.css">
+</head>
+<body>
+<div id="app">
+  <header class="topbar">
+    <div class="brand">✎ Audhd Scribbler</div>
+    <div class="header-actions">
+      <button class="btn-ghost" id="quickNoteBtn" onclick="openQuickNote()">✎ Quick Note</button>
+      <span class="status-dot" id="statusDot">●</span>
+      <span class="status-text" id="statusText">Ready</span>
+    </div>
+  </header>
+  <div class="layout">
+    <aside class="sidebar">
+      <nav>
+        <button class="nav-item active" data-view="home" onclick="navigate('home')">◌ Home</button>
+        <button class="nav-item" data-view="inbox" onclick="navigate('inbox')">✉ Inbox <span class="nav-count" id="inboxCount"></span></button>
+        <button class="nav-item" data-view="manuscript" onclick="navigate('manuscript')">📄 Manuscript <span class="nav-count" id="msCount"></span></button>
+        <button class="nav-item" data-view="search" onclick="navigate('search')">🔍 Search</button>
+        <button class="nav-item" data-view="exports" onclick="navigate('exports')">⬇ Export & Backup</button>
+        <button class="nav-item" data-view="settings" onclick="navigate('settings')">⚙ Settings</button>
+      </nav>
+      <div class="sidebar-footer">v5.0 · local</div>
+    </aside>
+    <main class="content" id="content">
+      <!-- Views render here -->
+    </main>
+  </div>
+</div>
+
+<!-- Thinking Timer Overlay -->
+<div class="thinking-overlay" id="thinkingOverlay" style="display:none">
+  <div class="thinking-card">
+    <h2 class="thinking-title" id="thinkingTitle">Working…</h2>
+    <div class="thinking-step" id="thinkingStep"></div>
+    <div class="thinking-timer" id="thinkingTimer">00:00</div>
+    <div class="thinking-timer-label">elapsed</div>
+    <div class="thinking-dot" id="thinkingDot"></div>
+    <div class="thinking-message" id="thinkingMessage">Reading your words carefully…</div>
+    <button class="btn-ghost thinking-cancel" id="thinkingCancel" onclick="cancelOperation()">Stop — your work is saved</button>
+  </div>
+</div>
+
+<!-- Quick Note Overlay -->
+<div class="note-overlay" id="noteOverlay" style="display:none">
+  <div class="note-panel">
+    <h3>✎ Quick Note</h3>
+    <input type="text" class="note-title-input" id="noteTitle" placeholder="Title (optional)">
+    <textarea class="note-body-input" id="noteBody" placeholder="Write the thought, memory, line, question or fragment here…"></textarea>
+    <div class="note-actions">
+      <span class="note-autosave" id="noteAutosave"></span>
+      <button class="btn-primary" onclick="saveNote()">Save to Inbox</button>
+    </div>
+  </div>
+</div>
+
+<!-- Toast -->
+<div class="toast" id="toast" style="display:none"></div>
+
+<script src="app/app.js"></script>
+</body>
+</html>

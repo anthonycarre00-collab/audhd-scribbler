@@ -1,0 +1,23 @@
+/* AUDHD-specific: reduced motion, focus rings, contrast */
+@media (prefers-reduced-motion: reduce) {
+  .thinking-dot { animation: none; opacity: 0.7; }
+  .thinking-message { transition: none; }
+  * { transition: none !important; animation: none !important; }
+}
+
+/* Always-visible focus rings */
+*:focus-visible {
+  outline: 2px solid var(--inbox-accent);
+  outline-offset: 2px;
+}
+.zone-manuscript *:focus-visible {
+  outline-color: var(--ms-accent);
+}
+
+/* Prevent text selection on buttons (sensory) */
+button { user-select: none; }
+
+/* High contrast for small text */
+@media (min-resolution: 120dpi) {
+  .file-meta, .tool-meta, .kv-label, .result-badge, .nav-count, .sidebar-footer { font-size: 13px; }
+}

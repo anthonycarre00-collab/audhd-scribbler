@@ -1,0 +1,53 @@
+/* The Thinking Timer — large, central, calming */
+.thinking-overlay {
+  position: fixed; inset: 0; background: rgba(46,42,38,0.12);
+  display: flex; align-items: center; justify-content: center; z-index: 500;
+}
+.thinking-card {
+  background: var(--panel); border-radius: var(--r-lg); padding: var(--sp-2xl);
+  max-width: 480px; width: 90%; text-align: center; box-shadow: var(--shadow-lg);
+}
+.thinking-title {
+  font-family: var(--font-heading); font-size: 24px; font-weight: 600;
+  color: var(--ink); margin-bottom: 4px;
+}
+.thinking-step { font-size: 14px; color: var(--muted); margin-bottom: var(--sp-xl); }
+.thinking-timer {
+  font-family: var(--font-mono); font-size: 56px; font-weight: 500;
+  color: var(--ink); font-variant-numeric: tabular-nums; line-height: 1;
+}
+.thinking-timer-label { font-size: 13px; color: var(--muted); margin-top: 4px; margin-bottom: var(--sp-lg); }
+.thinking-dot {
+  width: 10px; height: 10px; border-radius: 50%; background: var(--inbox-accent);
+  margin: 0 auto var(--sp-md); animation: pulse 2.4s ease-in-out infinite;
+}
+@keyframes pulse {
+  0%, 100% { opacity: 0.3; }
+  50% { opacity: 1.0; }
+}
+.thinking-message {
+  font-size: 16px; font-style: italic; color: var(--muted);
+  margin-bottom: var(--sp-xl); min-height: 24px; transition: opacity 0.4s;
+}
+.thinking-cancel { margin-top: var(--sp-md); }
+
+/* Quick Note overlay */
+.note-overlay {
+  position: fixed; inset: 0; background: rgba(46,42,38,0.12);
+  display: flex; justify-content: flex-end; z-index: 500;
+}
+.note-panel {
+  background: var(--panel); width: 400px; height: 100%; padding: var(--sp-lg);
+  display: flex; flex-direction: column; box-shadow: var(--shadow-lg);
+}
+.note-panel h3 { margin-bottom: var(--sp-md); }
+.note-title-input {
+  width: 100%; padding: 10px; border: 1px solid var(--line); border-radius: var(--r-sm);
+  font-family: var(--font-body); font-size: 15px; margin-bottom: var(--sp-sm);
+}
+.note-body-input {
+  flex: 1; width: 100%; padding: 10px; border: 1px solid var(--line); border-radius: var(--r-sm);
+  font-family: var(--font-body); font-size: 15px; resize: none; min-height: 200px;
+}
+.note-actions { display: flex; justify-content: space-between; align-items: center; margin-top: var(--sp-md); }
+.note-autosave { font-size: 12px; color: var(--muted); }
