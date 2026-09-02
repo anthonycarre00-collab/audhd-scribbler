@@ -9,7 +9,8 @@ venv/
 env/
 *.egg-info/
 dist/
-build/
+build/__pycache__/
+build/*.pyc
 
 # Data (private — your writing)
 data/
