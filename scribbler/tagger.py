@@ -204,7 +204,7 @@ def detect_anachronisms(text: str, scene_year: int = None) -> List[Dict]:
 
 _spacy_nlp=None
 def _get_spacy():
-    """Lazy-load spaCy if the model is already installed; never download during tagging."""
+    """Lazy-load spaCy. Handles both dev and frozen (PyInstaller) modes."""
     global _spacy_nlp
     if _spacy_nlp is False:return None
     if _spacy_nlp is not None:return _spacy_nlp
@@ -213,7 +213,12 @@ def _get_spacy():
         try:
             _spacy_nlp=spacy.load("en_core_web_sm")
         except Exception:
-            _spacy_nlp=False
+            # In frozen exe, try loading from the bundled path
+            if getattr(sys, "frozen", False):
+                import en_core_web_sm
+                _spacy_nlp = en_core_web_sm.load()
+            else:
+                _spacy_nlp=False
     except Exception:
         _spacy_nlp=False
     return _spacy_nlp

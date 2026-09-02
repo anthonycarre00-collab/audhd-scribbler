@@ -30,8 +30,8 @@ if errorlevel 1 (
     exit /b 1
 )
 
-REM Launch the webapp UI (opens in browser automatically)
-python ScribblerWindows.py
+REM Launch the v2 desktop app (pywebview native window — no browser)
+python main.py
 
 echo.
 pause
