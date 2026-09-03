@@ -2,10 +2,11 @@
 """The Audhd Scribbler v2 — Desktop app entry point.
 
 Creates a pywebview native window with the full UI. No web server, no browser.
+Uses html= parameter (not url=) to serve the UI in-memory, bypassing
+all file:// security restrictions in WebView2.
 """
 import sys
 import os
-import webview
 
 # Ensure the scribbler package is importable
 SCRIPT_DIR = os.path.dirname(os.path.abspath(__file__))
@@ -26,21 +27,27 @@ try:
 except Exception:
     pass
 
+import webview
 from scribbler.api import Api
 
 
-def main():
-    # Resolve UI path (works in both dev and frozen exe)
+def load_html():
+    """Load the UI HTML as a string. Works in both dev and frozen exe."""
     if getattr(sys, "frozen", False):
         ui_path = os.path.join(sys._MEIPASS, "assets", "ui", "index.html")
     else:
         ui_path = os.path.join(SCRIPT_DIR, "assets", "ui", "index.html")
+    with open(ui_path, "r", encoding="utf-8") as f:
+        return f.read()
 
+
+def main():
+    html_string = load_html()
     api = Api()
 
     window = webview.create_window(
         title="The Audhd Scribbler",
-        url=ui_path,
+        html=html_string,
         js_api=api,
         width=1200,
         height=800,

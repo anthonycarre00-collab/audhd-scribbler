@@ -21,28 +21,25 @@ except Exception:
             model_path = str(candidate)
             break
 
-# Build datas list — only include directories that exist
+# Build datas list — include the HTML file explicitly
 datas = []
 
-for asset_dir, dest in [('assets/ui', 'assets/ui'), ('assets/fonts', 'assets/fonts'), ('assets/icons', 'assets/icons')]:
+# The single self-contained index.html (all CSS+JS inlined)
+html_path = ROOT / 'assets' / 'ui' / 'index.html'
+if html_path.exists():
+    datas.append((str(html_path), 'assets/ui'))
+    print(f" Including index.html ({html_path.stat().st_size} bytes)")
+
+# Add any other asset dirs that exist and have files
+for asset_dir, dest in [('assets/fonts', 'assets/fonts'), ('assets/icons', 'assets/icons')]:
     full_path = ROOT / asset_dir
     if full_path.exists() and any(full_path.iterdir()):
         datas.append((str(full_path), dest))
-    else:
-        print(f" Skipping {asset_dir} (not found or empty)")
 
 # Add spaCy model if found
 if model_path and os.path.exists(model_path):
     datas.append((model_path, 'en_core_web_sm'))
     print(f" Including spaCy model from: {model_path}")
-
-# Add spacy data files
-try:
-    import spacy
-    spacy_path = str(Path(spacy.__file__).parent)
-    datas.append((spacy_path, 'spacy'))
-except Exception:
-    pass
 
 a = Analysis(
     [str(ROOT / 'main.py')],
