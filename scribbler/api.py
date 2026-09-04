@@ -317,6 +317,56 @@ class Api:
 
     # ── EXPORT ──────────────────────────────────────────────────────
 
+    def pick_open_files(self) -> dict:
+        """Open a native file picker dialog. Returns selected file paths."""
+        try:
+            import webview
+            window = webview.windows[0] if webview.windows else None
+            if not window:
+                return {"paths": []}
+            result = window.create_file_dialog(
+                webview.OPEN_DIALOG,
+                allow_multiple=True,
+                file_types=('Text Files (*.txt;*.md;*.text)', 'All Files (*.*)'),
+            )
+            if result:
+                return {"paths": result if isinstance(result, list) else [result]}
+            return {"paths": []}
+        except Exception as e:
+            return {"paths": [], "error": str(e)}
+
+    def pick_save_path(self, default_name: str = "export.txt") -> dict:
+        """Open a native save dialog. Returns chosen save path."""
+        try:
+            import webview
+            window = webview.windows[0] if webview.windows else None
+            if not window:
+                return {"path": None}
+            # Determine file extension filter
+            ext = ".txt"
+            if default_name.endswith(".docx"):
+                ext = ".docx"
+                file_types = ('Word Document (*.docx)',)
+            elif default_name.endswith(".md"):
+                ext = ".md"
+                file_types = ('Markdown (*.md)',)
+            elif default_name.endswith(".zip"):
+                ext = ".zip"
+                file_types = ('ZIP Archive (*.zip)',)
+            else:
+                file_types = ('Text Files (*.txt)',)
+
+            result = window.create_file_dialog(
+                webview.SAVE_DIALOG,
+                save_filename=default_name,
+                file_types=file_types,
+            )
+            if result:
+                return {"path": result}
+            return {"path": None}
+        except Exception as e:
+            return {"path": None, "error": str(e)}
+
     def export_file(self, path: str, kind: str, save_path: str) -> dict:
         """Export a file to docx/md/txt at a user-chosen location."""
         try:
