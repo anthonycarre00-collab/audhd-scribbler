@@ -153,11 +153,19 @@ class Api:
             archive.mkdir(exist_ok=True)
             dest = _unique_path(archive, p.name)
             p.rename(dest)
+            # Delete from DB — try both the original path and resolved path
             conn = db.get_db()
-            conn.execute("DELETE FROM files WHERE path = ?", (str(p.resolve()),))
-            conn.execute("DELETE FROM analysis_results WHERE file_path = ?", (str(p.resolve()),))
+            resolved = str(p.resolve())
+            original = str(p)
+            # Try multiple path variations the DB might store
+            for path_var in [resolved, original, path]:
+                conn.execute("DELETE FROM files WHERE path = ?", (path_var,))
+                conn.execute("DELETE FROM analysis_results WHERE file_path = ?", (path_var,))
+            # Also try LIKE match for relative/absolute mismatches
+            conn.execute("DELETE FROM files WHERE path LIKE ?", (f"%{p.name}%",))
+            conn.execute("DELETE FROM analysis_results WHERE file_path LIKE ?", (f"%{p.name}%",))
             conn.execute("INSERT INTO activity_log (timestamp, action, file_path, details) VALUES (?, ?, ?, ?)",
-                         (datetime.now().isoformat(), "delete", str(p.resolve()), f"Moved to archive/{dest.name}"))
+                         (datetime.now().isoformat(), "delete", original, f"Moved to archive/{dest.name}"))
             conn.commit()
             conn.close()
             return {"ok": True, "message": f"Moved to archive/{dest.name}"}
@@ -370,19 +378,72 @@ class Api:
     def export_file(self, path: str, kind: str, save_path: str) -> dict:
         """Export a file to docx/md/txt at a user-chosen location."""
         try:
+            # save_path may come as a tuple from pywebview — extract the string
+            if isinstance(save_path, (list, tuple)):
+                save_path = save_path[0] if save_path else None
+            if not save_path:
+                return {"ok": False, "error": "No save location chosen"}
+
+            # Generate the export to the user's chosen path directly
+            from pathlib import Path as P
+            dest = P(save_path)
+            dest.parent.mkdir(parents=True, exist_ok=True)
+
+            src = P(path)
+            if not src.exists():
+                return {"ok": False, "error": "Source file not found"}
+
             if kind == "docx":
-                out = export_docx(path)
+                from .export import _sanitize_for_docx
+                try:
+                    from docx import Document
+                    from docx.shared import Pt
+                except ImportError:
+                    return {"ok": False, "error": "python-docx not installed"}
+                content = read_text_file(src)
+                if content.startswith("---"):
+                    end = content.find("---", 3)
+                    if end != -1:
+                        content = content[end + 3:].strip()
+                import re as _re
+                content = _re.sub(r'<!-- SCRIBBLER SUMMARY[\s\S]*?-->', '', content).strip()
+                content = _sanitize_for_docx(content)
+                doc = Document()
+                style = doc.styles['Normal']
+                style.font.name = 'Calibri'
+                style.font.size = Pt(11)
+                title = src.stem.replace('-', ' ').replace('_', ' ').title()
+                title = _sanitize_for_docx(title)
+                doc.add_heading(title, level=1)
+                for para in _re.split(r'\n\s*\n', content):
+                    para = para.strip()
+                    if not para:
+                        continue
+                    if para.startswith('# '):
+                        doc.add_heading(_sanitize_for_docx(para[2:]), level=1)
+                    elif para.startswith('## '):
+                        doc.add_heading(_sanitize_for_docx(para[3:]), level=2)
+                    elif para.startswith('### '):
+                        doc.add_heading(_sanitize_for_docx(para[4:]), level=3)
+                    else:
+                        doc.add_paragraph(_sanitize_for_docx(para))
+                doc.save(str(dest))
             elif kind == "md":
-                out = export_markdown(path)
+                content = read_text_file(src)
+                write_text_file(dest, content)
             elif kind == "txt":
-                out = export_plain_text(path)
+                content = read_text_file(src)
+                if content.startswith("---"):
+                    end = content.find("---", 3)
+                    if end != -1:
+                        content = content[end + 3:].strip()
+                import re as _re2
+                content = _re2.sub(r'<!-- SCRIBBLER SUMMARY[\s\S]*?-->', '', content).strip()
+                write_text_file(dest, content)
             else:
                 return {"ok": False, "error": f"Unknown format: {kind}"}
-            # If save_path is different from the default output, move it
-            if save_path and save_path != out:
-                shutil.move(out, save_path)
-                out = save_path
-            return {"ok": True, "path": out}
+
+            return {"ok": True, "path": str(dest)}
         except Exception as e:
             return {"ok": False, "error": str(e)}
 
