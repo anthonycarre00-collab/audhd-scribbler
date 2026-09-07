@@ -1,6 +1,7 @@
 #!/usr/bin/env python3
 """SQLite database for indexing tagged files and analysis results."""
 import sqlite3
+import re
 from pathlib import Path
 from datetime import datetime
 from typing import Optional, List, Dict, Any
@@ -93,8 +94,195 @@ def _init_tables(conn: sqlite3.Connection):
         file_path TEXT,
         details TEXT
     );
+
+    CREATE TABLE IF NOT EXISTS tag_occurrences (
+        id          INTEGER PRIMARY KEY AUTOINCREMENT,
+        file_path   TEXT NOT NULL,
+        tag_type    TEXT NOT NULL,
+        tag_value   TEXT NOT NULL,
+        paragraph   INTEGER,
+        char_start  INTEGER,
+        char_end    INTEGER,
+        snippet     TEXT
+    );
+    CREATE INDEX IF NOT EXISTS idx_occ_file ON tag_occurrences(file_path);
+    CREATE INDEX IF NOT EXISTS idx_occ_tag  ON tag_occurrences(tag_type, tag_value);
     """)
+    # FTS5 virtual table — wrapped in try/except because some SQLite builds lack FTS5
+    try:
+        conn.execute("""
+            CREATE VIRTUAL TABLE IF NOT EXISTS file_content_fts USING fts5(
+                file_path UNINDEXED,
+                filename  UNINDEXED,
+                body,
+                tokenize='porter unicode61'
+            )
+        """)
+    except sqlite3.OperationalError as e:
+        # FTS5 not available — full-text search will fall back to Python loop
+        pass
     conn.commit()
+
+
+def clear_tag_occurrences(file_path: str):
+    """Remove all tag occurrences for a file (called before re-indexing)."""
+    conn = get_db()
+    try:
+        conn.execute("DELETE FROM tag_occurrences WHERE file_path = ?", (file_path,))
+        conn.execute("DELETE FROM file_content_fts WHERE file_path = ?", (file_path,))
+        conn.commit()
+    except sqlite3.OperationalError:
+        # FTS table may not exist
+        conn.execute("DELETE FROM tag_occurrences WHERE file_path = ?", (file_path,))
+        conn.commit()
+    finally:
+        conn.close()
+
+
+def add_tag_occurrence(file_path: str, tag_type: str, tag_value: str,
+                       paragraph: int, char_start: int, char_end: int, snippet: str):
+    """Insert a single tag occurrence."""
+    conn = get_db()
+    try:
+        conn.execute(
+            "INSERT INTO tag_occurrences (file_path, tag_type, tag_value, paragraph, char_start, char_end, snippet) VALUES (?, ?, ?, ?, ?, ?, ?)",
+            (file_path, tag_type, tag_value, paragraph, char_start, char_end, snippet)
+        )
+        conn.commit()
+    finally:
+        conn.close()
+
+
+def index_file_content(file_path: str, filename: str, body: str):
+    """Add or replace a file's body in the FTS5 index."""
+    conn = get_db()
+    try:
+        conn.execute("DELETE FROM file_content_fts WHERE file_path = ?", (file_path,))
+        conn.execute("INSERT INTO file_content_fts (file_path, filename, body) VALUES (?, ?, ?)",
+                     (file_path, filename, body))
+        conn.commit()
+    except sqlite3.OperationalError:
+        # FTS5 unavailable
+        pass
+    finally:
+        conn.close()
+
+
+def search_fts(query: str, limit: int = 200) -> List[Dict]:
+    """Full-text search via FTS5. Returns matches with paragraph numbers + snippets.
+
+    Each match dict:
+      { file_path, filename, paragraph, char_start, char_end, snippet }
+
+    Paragraph is computed from the offset using a simple newline-count heuristic.
+    If FTS5 is unavailable, returns an empty list (caller should fall back).
+    """
+    conn = get_db()
+    try:
+        # FTS5 MATCH returns the body; we then need to find the match position
+        # Use snippet() and offsets() functions
+        rows = conn.execute("""
+            SELECT file_path, filename, body,
+                   snippet(file_content_fts, 2, '<<', '>>', '…', 32) as snip
+            FROM file_content_fts
+            WHERE body MATCH ?
+            LIMIT ?
+        """, (query, limit)).fetchall()
+    except sqlite3.OperationalError:
+        conn.close()
+        return []
+    finally:
+        try:
+            conn.close()
+        except Exception:
+            pass
+
+    # For each row, locate the match within the body to compute paragraph number
+    results = []
+    for r in rows:
+        body = r["body"]
+        # Compute paragraph number from offset of <<marker
+        offset = body.find("<<")
+        if offset == -1:
+            offset = 0
+        # Paragraph = 1 + number of blank-line-paragraph-separators before offset
+        upto = body[:offset]
+        para = 1 + len(re.findall(r'\n\s*\n', upto))
+        # Strip the markers from the snippet for display
+        snip = r["snip"].replace("<<", "").replace(">>", "") if r["snip"] else body[max(0,offset-80):offset+120]
+        results.append({
+            "file_path": r["file_path"],
+            "filename": r["filename"],
+            "paragraph": para,
+            "char_start": offset,
+            "char_end": offset + len(query),
+            "snippet": snip,
+        })
+    return results
+
+
+def get_tag_occurrences(tag_type: str = None, tag_value: str = None,
+                        file_path: str = None, limit: int = 500) -> List[Dict]:
+    """Query tag occurrences by any combination of filters."""
+    conn = get_db()
+    clauses = []
+    params = []
+    if tag_type:
+        clauses.append("tag_type = ?")
+        params.append(tag_type)
+    if tag_value:
+        clauses.append("tag_value = ?")
+        params.append(tag_value)
+    if file_path:
+        clauses.append("file_path = ?")
+        params.append(file_path)
+    where = (" WHERE " + " AND ".join(clauses)) if clauses else ""
+    params.append(limit)
+    rows = conn.execute(
+        f"SELECT * FROM tag_occurrences{where} ORDER BY file_path, paragraph LIMIT ?",
+        params
+    ).fetchall()
+    conn.close()
+    return [dict(r) for r in rows]
+
+
+def upsert_character(name: str, aliases: List[str] = None, description: str = "",
+                     first_appearance: str = "", mention_count: int = 0):
+    """Insert or update a character."""
+    conn = get_db()
+    aliases_json = json.dumps(aliases or [], ensure_ascii=False)
+    try:
+        conn.execute("""
+            INSERT INTO characters (name, aliases, description, first_appearance, mention_count)
+            VALUES (?, ?, ?, ?, ?)
+            ON CONFLICT(name) DO UPDATE SET
+                aliases=excluded.aliases,
+                description=excluded.description,
+                last_appearance=excluded.first_appearance,
+                mention_count=excluded.mention_count
+        """, (name, aliases_json, description, first_appearance, mention_count))
+        conn.commit()
+    finally:
+        conn.close()
+
+
+def upsert_place(name: str, aliases: List[str] = None, description: str = "",
+                 first_appearance: str = "", mention_count: int = 0):
+    """Insert or update a place."""
+    conn = get_db()
+    aliases_json = json.dumps(aliases or [], ensure_ascii=False)
+    try:
+        conn.execute("""
+            INSERT INTO places (name, aliases, description, first_appearance, mention_count)
+            VALUES (?, ?, ?, ?, ?)
+            ON CONFLICT(name) DO UPDATE SET
+                aliases=excluded.aliases,
+                description=excluded.description,
+                mention_count=excluded.mention_count
+        """, (name, aliases_json, description, first_appearance, mention_count))
+        conn.commit()
+    finally:
+        conn.close()
 
 
 def upsert_file(meta: Dict[str, Any]):

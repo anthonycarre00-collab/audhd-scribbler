@@ -319,10 +319,66 @@ def tag_file(file_path: str, use_llm: bool=True) -> Dict:
     try:
         from . import db
         db.upsert_file(meta)
+        # Phase 4: index tag occurrences at the paragraph level + FTS content
+        _index_tag_occurrences(str(path.resolve()), body_text, meta)
+        db.index_file_content(str(path.resolve()), path.name, body_text)
     except Exception as e:
         # Don't fail the whole tag if DB write fails — return meta anyway
         print(f"  [Warning] Could not save to database: {e}", file=sys.stderr)
     return meta
+
+
+def _index_tag_occurrences(file_path: str, body_text: str, meta: dict):
+    """Populate the tag_occurrences table with paragraph-level positions for every tag value.
+
+    Called from tag_file() after the meta is built. Idempotent — clears existing
+    occurrences for the file before re-indexing.
+    """
+    from . import db
+    from .passage import build_index, find_paragraphs_containing
+    db.clear_tag_occurrences(file_path)
+    idx = build_index(body_text)
+    # Tag types and their corresponding values from meta
+    tag_buckets = [
+        ("characters", meta.get("characters", [])),
+        ("places",     meta.get("places", [])),
+        ("themes",     meta.get("themes", [])),
+        ("sensory",    meta.get("sensory", [])),
+        ("beats",      meta.get("beats", [])),
+    ]
+    for tag_type, values in tag_buckets:
+        if not values:
+            continue
+        for v in values:
+            if not v or not isinstance(v, str):
+                continue
+            matches = find_paragraphs_containing(idx, v, case_sensitive=False)
+            for m in matches:
+                db.add_tag_occurrence(
+                    file_path=file_path,
+                    tag_type=tag_type,
+                    tag_value=v,
+                    paragraph=m["paragraph"],
+                    char_start=m.get("char_offsets_in_paragraph", [0])[0],
+                    char_end=m.get("char_offsets_in_paragraph", [0])[0] + len(v),
+                    snippet=m.get("snippet", ""),
+                )
+    # Era is a single value, not a list — index it too if present
+    era = meta.get("era")
+    if era and isinstance(era, str):
+        # Only index 4-digit years (avoid tagging "1990s" everywhere it appears)
+        import re as _re
+        for year_match in _re.finditer(r'\b(\d{4})\b', era):
+            year = year_match.group(1)
+            matches = find_paragraphs_containing(idx, year, case_sensitive=True)
+            for m in matches:
+                db.add_tag_occurrence(
+                    file_path=file_path, tag_type="era", tag_value=year,
+                    paragraph=m["paragraph"],
+                    char_start=m.get("char_offsets_in_paragraph", [0])[0],
+                    char_end=m.get("char_offsets_in_paragraph", [0])[0] + len(year),
+                    snippet=m.get("snippet", ""),
+                )
 
 
 def find_links(file_path: str):
