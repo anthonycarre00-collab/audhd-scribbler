@@ -15,7 +15,7 @@ try:
 except (AttributeError, Exception):
     pass
 
-from . import db, llm, tagger, safety
+from . import db, llm, tagger, safety, synthesis as synthesis_module
 from .config import PROJECT_ROOT, FOLDERS, STATUSES
 from .file_io import read_text_file, write_text_file
 from .analysis_catalog import ANALYSIS_CATALOG
@@ -63,8 +63,9 @@ class Api:
         stats = db.get_stats()
         return {
             "ok": True,
-            "version": "5.0",
+            "version": "10.0",
             "llm": llm.llm_status(),
+            "llm_available": bool(llm.llm_available()),
             "total_files": stats.get("total_files", 0),
             "total_words": stats.get("total_words", 0),
         }
@@ -305,7 +306,7 @@ class Api:
             return {"ok": False, "error": "Choose at least one analysis tool"}
         all_files = self.list_files().get("files", [])
         results = []
-        total_steps = len(paths) * len(tools)
+        total_steps = len(paths) * (len(tools) + 1)  # +1 for synthesis per file
         step = 0
         for raw_path in paths:
             try:
@@ -316,6 +317,7 @@ class Api:
                     if end != -1:
                         text = text[end + 3:].strip()
                 text = re.sub(r'<!-- SCRIBBLER SUMMARY[\s\S]*?-->', '', text).strip()
+                word_count = len(text.split())
                 per_file = {}
                 for tool_key in tools:
                     step += 1
@@ -329,7 +331,19 @@ class Api:
                             pass
                     except Exception as e:
                         per_file[tool_key] = {"error": str(e)}
-                results.append({"filename": p.name, "results": per_file})
+                # Phase 1: wire synthesis into analyze()
+                step += 1
+                self._push_progress(step, total_steps, f"Synthesising {p.name}")
+                try:
+                    syn = synthesis_module.generate(per_file, word_count=word_count)
+                    per_file["_synthesis"] = _js_safe(syn)
+                    try:
+                        db.save_analysis(str(p.resolve()), "_synthesis", syn)
+                    except Exception:
+                        pass
+                except Exception as e:
+                    per_file["_synthesis"] = {"error": str(e)}
+                results.append({"filename": p.name, "path": _normalize_path(str(p.resolve())), "results": per_file})
             except Exception as e:
                 results.append({"filename": raw_path, "results": {}, "error": str(e)})
         self._push_progress(total_steps, total_steps, "Done")
