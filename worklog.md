@@ -109,3 +109,37 @@ Stage Summary:
 - Run URL: https://github.com/anthonycarre00-collab/audhd-scribbler/actions/runs/34160369402
 - Artifacts available for download from the run page
 - All tests green: 240 comprehensive + 41 pre-build + 10 phase + 2 smoke = 293 tests passing
+
+---
+Task ID: v10-phase15
+Agent: Super Z (main)
+Task: Build the relationship-map visualization and "compare two chapters' emotional arcs" view that were suggested as next steps but not yet implemented. Test and sign off full build.
+
+Work Log:
+- Audited codebase: confirmed neither feature existed (compare_chapters only compared metrics, no relationship map at all)
+- Built scribbler/relationship_map.py — aggregates characters + relationships from DB
+  - Nodes: characters with mention_count, first_appearance, files
+  - Edges: LLM-extracted relationships (preferred), with co-occurrence fallback inference
+  - Returns node_count, edge_count, file_count, has_inferred_edges
+- Built scribbler/emotional_arc_comparison.py — compares 2+ chapters' valence curves
+  - Runs themes.analyze on each, extracts smoothed per-sentence valence
+  - Downsamples to 50 points for fair visualization across different lengths
+  - Computes per-chapter: arc shape (Vonnegut's 6 + flat/mixed), average, range, turning point
+  - Computes differences: average_spread, shape_agreement, shapes list
+  - Builds plain-English interpretation
+- Added API methods: get_relationship_map(), compare_emotional_arcs(paths)
+- Added UI: two new sidebar entries (🕸 Map, 📈 Compare)
+  - Map view: SVG circular-layout graph, node size = mentions, solid/dashed edges, hover-to-highlight, click-to-scroll, character list
+  - Compare view: SVG overlaid line chart, 5 distinct colors, grid at ±1/±0.5/0, turning points marked, per-chapter summary table, interpretation card
+- Added CSS for both views (map-svg, compare-svg, legend, axis labels)
+- Test: scripts/phase15_test.py — all tests PASS (relationship map builds nodes+edges, emotional arc comparison correctly orders happy > sad > mixed chapters)
+- Ran full test sweep: 240 comprehensive + 41 pre-build + 11 phase + 2 smoke + final E2E = 295 tests, all PASS
+- Pushed to GitHub, Windows build completed successfully (all 14 CI steps ✓)
+- Two artifacts produced: Installer (53.3 MB) + Portable (76.1 MB)
+- Run URL: https://github.com/anthonycarre00-collab/audhd-scribbler/actions/runs/34162215522
+
+Stage Summary:
+- Both suggested next-iteration features now implemented and shipped
+- Relationship map auto-builds from tagged files (no extra work for the writer)
+- Emotional arc comparison works on any 2+ chapters, handles errors per-chapter
+- Build is signed off: 295 tests green, CI green, artifacts available
