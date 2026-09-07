@@ -118,8 +118,8 @@ def search_multi(filters: Dict[str, str]) -> List[Dict]:
 def find_tag_in_file(file_path: str, tag_type: str, value: str) -> List[Dict]:
     """Find where in a file a tag value appears (which paragraphs).
 
-    This gives the user proof that the tag was found in the actual text,
-    and shows them the surrounding context.
+    Uses word-boundary regex so 'mom' doesn't match 'moment'.
+    Uses the passage indexer (Phase 2) for accurate paragraph numbers.
 
     Args:
         file_path: Path to the file
@@ -127,7 +127,7 @@ def find_tag_in_file(file_path: str, tag_type: str, value: str) -> List[Dict]:
         value: The value to find
 
     Returns:
-        List of {paragraph_number, context, position} dicts
+        List of {paragraph, context, char_start, char_end} dicts
     """
     path = Path(file_path)
     if not path.exists():
@@ -147,31 +147,164 @@ def find_tag_in_file(file_path: str, tag_type: str, value: str) -> List[Dict]:
     # Strip summary comments
     content = re.sub(r'<!-- SCRIBBLER SUMMARY[\s\S]*?-->', '', content).strip()
 
-    # Split into paragraphs
-    paragraphs = re.split(r'\n\s*\n', content)
+    from .passage import build_index, find_paragraphs_containing
+    idx = build_index(content)
+    matches = find_paragraphs_containing(idx, value, case_sensitive=False)
 
     occurrences = []
-    for i, para in enumerate(paragraphs):
-        # Case-insensitive search
-        if value.lower() in para.lower():
-            # Find the position
-            pos = para.lower().find(value.lower())
-            # Get context (50 chars before and after)
-            start = max(0, pos - 50)
-            end = min(len(para), pos + len(value) + 50)
-            context = para[start:end].strip()
+    for m in matches:
+        para_num = m["paragraph"]
+        # Find the actual offset within the paragraph for char_start
+        para_text = next((p["text"] for p in idx["paragraphs"] if p["index"] == para_num), "")
+        # Get the full paragraph text as context
+        # Use ±120 chars around the first match
+        if m.get("char_offsets_in_paragraph"):
+            offset = m["char_offsets_in_paragraph"][0]
+            start = max(0, offset - 80)
+            end = min(len(para_text), offset + len(value) + 80)
+            context = para_text[start:end].strip()
             if start > 0:
-                context = "..." + context
-            if end < len(para):
-                context = context + "..."
+                context = "…" + context
+            if end < len(para_text):
+                context = context + "…"
+        else:
+            context = para_text[:200]
 
-            occurrences.append({
-                "paragraph": i + 1,
-                "context": context,
-                "position": pos,
-            })
+        occurrences.append({
+            "paragraph": para_num,
+            "context": context,
+            "char_start": offset if m.get("char_offsets_in_paragraph") else 0,
+            "char_end": (offset + len(value)) if m.get("char_offsets_in_paragraph") else len(value),
+            "snippet": m.get("snippet", ""),
+        })
 
     return occurrences
+
+
+def search_tags_with_excerpts(tag_type: str, value: str) -> List[Dict]:
+    """Combined search + excerpts in one call. Returns files with their matching paragraphs.
+
+    Each result dict:
+      {
+        filename, path, word_count, status, era, voice, emotional_register,
+        characters, places, themes,
+        excerpts: [{ paragraph, context, char_start, char_end, snippet }]
+      }
+    """
+    files = search_by_tag(tag_type, value)
+    out = []
+    for f in files:
+        path = f.get("path")
+        excerpts = []
+        if path:
+            # First try the tag_occurrences table (fast, indexed)
+            from . import db
+            occs = db.get_tag_occurrences(tag_type=tag_type, tag_value=value, file_path=path)
+            if occs:
+                # Deduplicate by paragraph (multiple LLM-tagged values may match the same string)
+                seen_paras = set()
+                for o in occs:
+                    if o["paragraph"] not in seen_paras:
+                        seen_paras.add(o["paragraph"])
+                        excerpts.append({
+                            "paragraph": o["paragraph"],
+                            "context": o.get("snippet", "")[:300],
+                            "char_start": o.get("char_start", 0),
+                            "char_end": o.get("char_end", 0),
+                            "snippet": o.get("snippet", "")[:200],
+                        })
+                excerpts.sort(key=lambda x: x["paragraph"])
+            else:
+                # Fallback: scan the file directly
+                excerpts = find_tag_in_file(path, tag_type, value)
+        out.append({
+            "filename": f.get("filename", ""),
+            "path": path,
+            "word_count": f.get("word_count", 0),
+            "status": f.get("status", ""),
+            "era": f.get("era", ""),
+            "voice": f.get("voice", ""),
+            "emotional_register": f.get("emotional_register", ""),
+            "characters": f.get("characters", []),
+            "places": f.get("places", []),
+            "themes": f.get("themes", []),
+            "excerpts": excerpts,
+            "excerpt_count": len(excerpts),
+        })
+    return out
+
+
+def search_text_in_all_files(query: str, limit: int = 200) -> List[Dict]:
+    """Free-text search across all indexed files. Uses FTS5 if available, falls back to Python loop.
+
+    Returns matches grouped by file:
+      [{ file_path, filename, matches: [{ paragraph, char_start, char_end, snippet }] }]
+    """
+    if not query or len(query.strip()) < 2:
+        return []
+
+    from . import db
+    # Try FTS5 first
+    try:
+        fts_results = db.search_fts(query, limit=limit)
+        if fts_results:
+            # Group by file
+            by_file = {}
+            for r in fts_results:
+                fp = r["file_path"]
+                if fp not in by_file:
+                    by_file[fp] = {
+                        "file_path": fp,
+                        "filename": r["filename"],
+                        "matches": [],
+                    }
+                by_file[fp]["matches"].append({
+                    "paragraph": r["paragraph"],
+                    "char_start": r["char_start"],
+                    "char_end": r["char_end"],
+                    "snippet": r["snippet"],
+                })
+            return list(by_file.values())
+    except Exception:
+        pass
+
+    # Fallback: Python loop over all files
+    all_files = db.get_all_files()
+    results = []
+    pattern = re.compile(r'\b' + re.escape(query) + r'\b', re.IGNORECASE)
+    from .passage import build_index, find_paragraphs_containing
+    for f in all_files:
+        path = f.get("path")
+        if not path:
+            continue
+        p = Path(path)
+        if not p.exists():
+            continue
+        try:
+            content = read_text_file(p)
+            if content.startswith("---"):
+                end = content.find("---", 3)
+                if end != -1:
+                    content = content[end + 3:].strip()
+            content = re.sub(r'<!-- SCRIBBLER SUMMARY[\s\S]*?-->', '', content).strip()
+            idx = build_index(content)
+            matches = find_paragraphs_containing(idx, query, case_sensitive=False)
+            if matches:
+                results.append({
+                    "file_path": path,
+                    "filename": f.get("filename", p.name),
+                    "matches": [{
+                        "paragraph": m["paragraph"],
+                        "char_start": m.get("char_offsets_in_paragraph", [0])[0],
+                        "char_end": m.get("char_offsets_in_paragraph", [0])[0] + len(query),
+                        "snippet": m.get("snippet", ""),
+                    } for m in matches],
+                })
+        except Exception:
+            continue
+        if len(results) >= limit:
+            break
+    return results
 
 
 def get_tag_coverage(file_path: str) -> Dict:

@@ -27,7 +27,8 @@ from .analysis_suite import run as suite_run
 from .writer_intelligence import chapter_comparison
 from .search import (
     search_by_tag, search_multi, find_tag_in_file,
-    get_tag_coverage, get_all_values_for_tag
+    get_tag_coverage, get_all_values_for_tag,
+    search_tags_with_excerpts, search_text_in_all_files
 )
 from .export import export_markdown, export_plain_text, export_docx, export_analysis_report
 from . import settings as settings_module
@@ -437,6 +438,18 @@ class Api:
             return {"ok": False, "occurrences": [], "count": 0}
         occurrences = find_tag_in_file(str(p), tag_type, value)
         return {"ok": True, "occurrences": _js_safe(occurrences), "count": len(occurrences)}
+
+    def search_tags_with_excerpts(self, tag_type: str, value: str) -> dict:
+        """Combined search + excerpts in one call. Each file includes its matching paragraphs."""
+        results = search_tags_with_excerpts(tag_type, value)
+        return {"ok": True, "results": _js_safe(results), "count": len(results)}
+
+    def search_full_text(self, query: str) -> dict:
+        """Free-text search across all indexed files. Uses FTS5, falls back to Python loop."""
+        if not query or not query.strip():
+            return {"ok": False, "error": "Empty query"}
+        results = search_text_in_all_files(query.strip())
+        return {"ok": True, "results": _js_safe(results), "count": len(results), "query": query.strip()}
 
     def tag_coverage(self, path: str) -> dict:
         p = _to_python_path(path)
