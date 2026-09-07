@@ -87,6 +87,8 @@ STOPLIST_CHARACTERS = {
     # Common nouns spaCy sometimes mis-tags
     "moments", "memories", "years", "days", "weeks", "months", "morning", "evening", "night",
     "kitchen", "bedroom", "porch", "backyard", "school", "house", "home", "room",
+    # Pronouns and possessives that get capitalized at sentence starts
+    "my", "i", "we", "he", "she", "they", "it", "us", "our", "his", "her", "their",
     # Generic words capitalized at sentence start
     "the", "and", "but", "when", "after", "before", "during", "while", "then",
 }
