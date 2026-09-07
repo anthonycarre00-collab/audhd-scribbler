@@ -131,13 +131,43 @@ def _generate_strengths(text: str, craft_result: Dict, voice_result: Dict, theme
 
 
 def _detect_memoir_patterns(text: str, craft_result: Dict, voice_result: Dict, char_result: Dict, cont_result: Dict) -> List[Dict]:
-    """Detect memoir-specific patterns: distant narrator, defensive register, missing stakes, etc."""
+    """Detect memoir-specific patterns: distant narrator, defensive register, missing stakes, etc.
+
+    Phase 7: adds structured `loc` and `evidence_quote` to paragraph-located observations.
+    """
+    from ..passage import build_index as build_passage_index, make_loc
+    try:
+        passage_idx = build_passage_index(text)
+    except Exception:
+        passage_idx = {"paragraphs": []}
     patterns = []
+
+    def _paragraphs_matching(regex_pattern):
+        """Return paragraph indices whose text matches the regex pattern."""
+        if not passage_idx.get("paragraphs"):
+            return []
+        try:
+            rx = re.compile(regex_pattern, re.IGNORECASE)
+        except re.error:
+            return []
+        return [p["index"] for p in passage_idx["paragraphs"] if rx.search(p["text"])]
+
+    def _excerpt_for_paragraphs(para_nums, max_chars=220):
+        if not para_nums or not passage_idx.get("paragraphs"):
+            return ""
+        for p in passage_idx["paragraphs"]:
+            if p["index"] == para_nums[0]:
+                return p["text"][:max_chars-1] + "…" if len(p["text"]) > max_chars else p["text"]
+        return ""
 
     # Distant narrator (high filter words + low sensory)
     filter_words = craft_result.get("filter_words", {})
     sensory = craft_result.get("sensory_density", {})
     if filter_words.get("per_1000_words", 0) > 15 and sensory.get("per_1000_words", 0) < 5:
+        distant_paras = _paragraphs_matching(r'\b(I saw|I heard|I felt|I noticed|I realized|I thought|it seemed|it appeared)\b')
+        evidence = _excerpt_for_paragraphs(distant_paras[:3])
+        loc = make_loc(distant_paras[:5], evidence_quote=evidence) if distant_paras else \
+              {"kind": "whole_chapter", "paragraphs": list(range(1, len(passage_idx.get("paragraphs", []))+1)), "evidence_quote": ""}
         patterns.append(format_flag(
             "distant_narrator",
             "whole chapter",
@@ -147,13 +177,20 @@ def _detect_memoir_patterns(text: str, craft_result: Dict, voice_result: Dict, c
                 "add one interior beat (a thought, a sensation, a reaction) after a key piece of dialogue",
                 "ground a scene with a specific sensory detail (smell and taste carry the most memory-weight)",
                 "keep as-is if the distance is intentional for this section",
-            ]
+            ],
+            loc=loc,
+            evidence_quote=evidence,
+            why_it_matters="Distance in memoir isn't wrong — it can mirror how memory actually arrives, observed rather than relived. But sustained distance keeps the reader outside the experience."
         ))
 
     # Defensive register
     defensive_cues = len(re.findall(r'\b(because|had to|needed to|no choice|forced|had no option|i\'m not saying|i don\'t mean|to be clear|just to be clear|for the record)\b', text, re.IGNORECASE))
     word_count = len(re.findall(r'\b\w+\b', text))
     if defensive_cues / max(word_count, 1) * 1000 > 3:
+        defensive_paras = _paragraphs_matching(r'\b(because|had to|needed to|no choice|forced|had no option|i\'m not saying|i don\'t mean|to be clear|just to be clear|for the record)\b')
+        evidence = _excerpt_for_paragraphs(defensive_paras[:3])
+        loc = make_loc(defensive_paras[:5], evidence_quote=evidence) if defensive_paras else \
+              {"kind": "whole_chapter", "paragraphs": list(range(1, len(passage_idx.get("paragraphs", []))+1)), "evidence_quote": ""}
         patterns.append(format_flag(
             "defensive_register",
             "whole chapter",
@@ -163,12 +200,18 @@ def _detect_memoir_patterns(text: str, craft_result: Dict, voice_result: Dict, c
                 "convert one defensive statement into a scene that shows the reader what happened",
                 "name the defensiveness as part of the narrator's voice ('I catch myself explaining again')",
                 "keep as-is if the argumentative mode is the point",
-            ]
+            ],
+            loc=loc,
+            evidence_quote=evidence,
+            why_it_matters="Defensive language in memoir often arrives as masking — explaining yourself before being asked. Noticing it lets you choose whether the explanation serves the story or protects the narrator."
         ))
 
     # Missing stakes (low emotional words + summary-heavy)
     summary_signals = len(re.findall(r'\b(years later|after that|eventually|over time|in the end|things changed|i grew up|time passed)\b', text, re.IGNORECASE))
     if summary_signals > 3 and voice_result.get("narrator_distance", {}).get("narrating_self_ratio", 0) > 0.6:
+        summary_paras = _paragraphs_matching(r'\b(years later|after that|eventually|over time|in the end|things changed|i grew up|time passed)\b')
+        evidence = _excerpt_for_paragraphs(summary_paras[:3])
+        loc = make_loc(summary_paras[:5], evidence_quote=evidence) if summary_paras else None
         patterns.append(format_flag(
             "missing_stakes",
             "whole chapter",
@@ -178,7 +221,10 @@ def _detect_memoir_patterns(text: str, craft_result: Dict, voice_result: Dict, c
                 "pick one summary passage and expand it into a scene with dialogue and sensory detail",
                 "add a sentence naming what the narrator wants or fears in the moment",
                 "keep as-is if this is intentionally a reflective, summary chapter",
-            ]
+            ],
+            loc=loc,
+            evidence_quote=evidence,
+            why_it_matters="Summary is necessary in memoir — you can't scene every year — but readers need at least one scene per chapter to feel why this story is being told now."
         ))
 
     # Essay-vs-memoir drift (high citation cues + low first-person)
@@ -194,12 +240,21 @@ def _detect_memoir_patterns(text: str, craft_result: Dict, voice_result: Dict, c
                 "anchor the research in a personal moment ('When I read this study, I thought of...')",
                 "intersperse memoir scenes between research passages",
                 "keep as-is if this is intentionally a research-braid chapter",
-            ]
+            ],
+            loc={"kind": "whole_chapter", "paragraphs": list(range(1, len(passage_idx.get("paragraphs", []))+1)), "evidence_quote": ""},
+            why_it_matters="Research-braid memoirs (like The Empathy Exams) work when the 'I' is the lens on the research. Without it, the reader loses the memoir contract."
         ))
 
     # Summary where scene is needed
     long_paragraphs = [p for p in re.split(r'\n\s*\n', text) if len(re.findall(r'\b\w+\b', p)) > 200]
     if len(long_paragraphs) > 2:
+        # Find paragraph numbers for long paragraphs
+        long_para_nums = []
+        for i, p in enumerate(re.split(r'\n\s*\n', text)):
+            if p.strip() and len(re.findall(r'\b\w+\b', p)) > 200:
+                long_para_nums.append(i + 1)
+        evidence = _excerpt_for_paragraphs(long_para_nums[:3])
+        loc = make_loc(long_para_nums[:5], evidence_quote=evidence) if long_para_nums else None
         patterns.append(format_flag(
             "summary_where_scene",
             f"{len(long_paragraphs)} long paragraphs (>200 words)",
@@ -209,7 +264,10 @@ def _detect_memoir_patterns(text: str, craft_result: Dict, voice_result: Dict, c
                 "break one long paragraph into a scene with dialogue and action",
                 "add a section break to signal a shift from summary to scene",
                 "keep as-is if the summary is doing necessary expository work",
-            ]
+            ],
+            loc=loc,
+            evidence_quote=evidence,
+            why_it_matters="Long paragraphs aren't inherently wrong — they can be the perfect container for rumination — but several in a row can flatten the rhythm and disengage the reader."
         ))
 
     # AUDHD-aware patterns

@@ -14,6 +14,7 @@ from pathlib import Path
 from ..config import WEAK_WORDS, FILTER_WORDS, SENSORY_CATEGORIES
 from ..feedback import make_observation, plain_summary, strengths_first, format_flag
 from .. import tagger
+from ..passage import build_index as build_passage_index, make_loc, paragraph_at_offset
 
 
 def analyze(text: str) -> Dict:
@@ -29,6 +30,12 @@ def analyze(text: str) -> Dict:
             "word_count": word_count,
         }
 
+    # Build passage index for click-to-jump locations (Phase 7)
+    try:
+        passage_idx = build_passage_index(text)
+    except Exception:
+        passage_idx = {"paragraphs": []}
+
     return {
         "word_count": word_count,
         "sentence_count": len(sentences),
@@ -42,7 +49,7 @@ def analyze(text: str) -> Dict:
         "weak_words": _weak_word_density(text, word_count),
         "filter_words": _filter_word_density(text, word_count),
         "alliteration": _alliteration_detection(sentences),
-        "observations": _generate_observations(sentences, paragraphs, words, word_count),
+        "observations": _generate_observations(sentences, paragraphs, words, word_count, passage_idx, text),
         "summary": _generate_summary(word_count, len(sentences), len(paragraphs)),
     }
 
@@ -405,13 +412,28 @@ def _alliteration_detection(sentences: List[str]) -> Dict:
     }
 
 
-def _generate_observations(sentences: List[str], paragraphs: List[str], words: List[str], word_count: int) -> List[Dict]:
-    """Generate low-shame observations based on the analysis."""
+def _generate_observations(sentences: List[str], paragraphs: List[str], words: List[str],
+                           word_count: int, passage_idx: Dict = None, full_text: str = "") -> List[Dict]:
+    """Generate low-shame observations based on the analysis.
+
+    Phase 7: each observation includes a structured `loc` field for click-to-jump,
+    an `evidence_quote` showing the pattern in context, and a `why_it_matters`
+    tying the observation to memoir craft.
+    """
+    passage_idx = passage_idx or {"paragraphs": []}
     observations = []
 
     rhythm = _sentence_rhythm(sentences)
     if rhythm.get("monotony_runs"):
         for run in rhythm["monotony_runs"][:2]:  # Top 2 runs
+            # Map sentence indices to paragraph numbers using the passage index
+            start_sent_idx = run['start_sentence'] - 1  # 0-based
+            end_sent_idx = run['end_sentence'] - 1
+            # Walk sentences to find their character offsets, then map to paragraphs
+            # We use a simple heuristic: each monotony run is likely in 1-2 paragraphs
+            paras_in_run = _paragraphs_for_sentence_range(passage_idx, sentences, start_sent_idx, end_sent_idx)
+            evidence = _excerpt_for_sentence_range(sentences, start_sent_idx, end_sent_idx)
+            loc = make_loc(paras_in_run, evidence_quote=evidence) if paras_in_run else None
             observations.append(format_flag(
                 "rhythm",
                 f"sentences {run['start_sentence']}-{run['end_sentence']}",
@@ -421,7 +443,10 @@ def _generate_observations(sentences: List[str], paragraphs: List[str], words: L
                     "break the pattern with a very short sentence (3-5 words)",
                     "vary the next sentence's structure significantly",
                     "keep as-is if the uniformity mirrors the narrator's mental state",
-                ]
+                ],
+                loc=loc,
+                evidence_quote=evidence,
+                why_it_matters="In memoir, a monotonous rhythm at a climax can flatten the emotional peak; a varied rhythm keeps the reader inside the experience."
             ))
 
     if rhythm.get("coefficient_of_variation", 0) < 0.5:
@@ -434,11 +459,17 @@ def _generate_observations(sentences: List[str], paragraphs: List[str], words: L
                 "intentionally mix short punchy sentences with longer ones",
                 "try breaking some long sentences into fragments",
                 "keep as-is if the steady rhythm is the voice you want",
-            ]
+            ],
+            loc={"kind": "whole_chapter", "paragraphs": list(range(1, len(paragraphs)+1)), "evidence_quote": ""},
+            why_it_matters="Steady rhythm is sometimes the right choice — it can mirror rumination or a held breath — but it should be a choice, not a default."
         ))
 
     rep = _repetition_analysis(' '.join(words), words)
     if rep.get("i_opener_percentage", 0) > 40:
+        # Find paragraphs with the most I-starting sentences
+        i_paragraphs = _find_paragraphs_with_pattern(passage_idx, r'\bI\s+(was|felt|saw|heard|knew|thought|remember|think|looked|look)\b')
+        evidence = _first_match_excerpt(passage_idx, i_paragraphs, full_text)
+        loc = make_loc(i_paragraphs[:5], evidence_quote=evidence) if i_paragraphs else None
         observations.append(format_flag(
             "sentence_openers",
             "whole chapter",
@@ -448,23 +479,33 @@ def _generate_observations(sentences: List[str], paragraphs: List[str], words: L
                 "try starting some sentences with a sensory detail or action",
                 "restructure a few sentences to begin with time or place",
                 "keep as-is if the 'I'-forward voice is intentional and consistent",
-            ]
+            ],
+            loc=loc,
+            evidence_quote=evidence,
+            why_it_matters="In first-person memoir, 'I'-forward sentences are unavoidable, but varying openers lets the reader see the world, not just the narrator seeing the world."
         ))
 
     weak = _weak_word_density(' '.join(words), word_count)
     if weak.get("per_1000_words", 0) > 40:
         top_weak = weak.get("found", [])
         if top_weak:
+            weak_word = top_weak[0][0]
+            weak_paragraphs = _find_paragraphs_with_pattern(passage_idx, r'\b' + re.escape(weak_word) + r'\b')
+            evidence = _first_match_excerpt(passage_idx, weak_paragraphs, full_text)
+            loc = make_loc(weak_paragraphs[:5], evidence_quote=evidence) if weak_paragraphs else None
             observations.append(format_flag(
                 "weak_words",
                 "whole chapter",
-                f"weak-word density is {weak['per_1000_words']}/1000 words; most frequent: '{top_weak[0][0]}' ({top_weak[0][1]} times)",
+                f"weak-word density is {weak['per_1000_words']}/1000 words; most frequent: '{weak_word}' ({top_weak[0][1]} times)",
                 "these words can dilute the prose's impact without adding meaning",
                 [
-                    f"try removing some instances of '{top_weak[0][0]}' and notice the effect",
+                    f"try removing some instances of '{weak_word}' and notice the effect",
                     "keep the ones that feel natural to the voice",
                     "leave as-is if the casual register is intentional",
-                ]
+                ],
+                loc=loc,
+                evidence_quote=evidence,
+                why_it_matters="Weak words ('really', 'just', 'very') often arrive when we're explaining rather than showing. In memoir, they can mask the specificity that makes a moment feel real."
             ))
 
     sensory = _sensory_density(' '.join(words), word_count)
@@ -478,10 +519,76 @@ def _generate_observations(sentences: List[str], paragraphs: List[str], words: L
                 "add one smell, taste, or tactile detail to a key scene",
                 "check if the absence is intentional (interior monologue chapters may not need it)",
                 "keep as-is if the chapter is reflective rather than scenic",
-            ]
+            ],
+            loc={"kind": "whole_chapter", "paragraphs": list(range(1, len(paragraphs)+1)), "evidence_quote": ""},
+            why_it_matters="Memoir lives or dies on specificity. A single concrete sensory detail can transform an abstract reflection into a moment the reader inhabits."
         ))
 
     return observations
+
+
+def _paragraphs_for_sentence_range(passage_idx: Dict, sentences: List[str], start_idx: int, end_idx: int) -> List[int]:
+    """Map a sentence index range to paragraph numbers using the passage index."""
+    if not passage_idx or not passage_idx.get("paragraphs"):
+        return []
+    # Reconstruct the joined sentence text to find its character offset in the full text
+    # Simpler: find the first sentence's text in the paragraphs and use that paragraph
+    if start_idx >= len(sentences):
+        return []
+    target_text = sentences[start_idx][:50]  # First 50 chars of the start sentence
+    paras = []
+    for p in passage_idx["paragraphs"]:
+        if target_text and target_text in p["text"]:
+            paras.append(p["index"])
+            break
+    # Also try the last sentence
+    if end_idx < len(sentences):
+        target_end = sentences[end_idx][:50]
+        for p in passage_idx["paragraphs"]:
+            if target_end and target_end in p["text"] and p["index"] not in paras:
+                paras.append(p["index"])
+                break
+    # Fill in any paragraphs between
+    if len(paras) >= 2:
+        min_p, max_p = min(paras), max(paras)
+        return list(range(min_p, max_p + 1))
+    return paras
+
+
+def _excerpt_for_sentence_range(sentences: List[str], start_idx: int, end_idx: int, max_chars: int = 200) -> str:
+    """Build an evidence excerpt from a range of sentences."""
+    if start_idx >= len(sentences):
+        return ""
+    end = min(end_idx + 1, len(sentences))
+    chunk = " ".join(sentences[start_idx:end])
+    if len(chunk) > max_chars:
+        chunk = chunk[:max_chars - 1] + "…"
+    return chunk
+
+
+def _find_paragraphs_with_pattern(passage_idx: Dict, pattern: str) -> List[int]:
+    """Find paragraph numbers whose text matches the given regex pattern."""
+    if not passage_idx or not passage_idx.get("paragraphs"):
+        return []
+    try:
+        rx = re.compile(pattern, re.IGNORECASE)
+    except re.error:
+        return []
+    return [p["index"] for p in passage_idx["paragraphs"] if rx.search(p["text"])]
+
+
+def _first_match_excerpt(passage_idx: Dict, paragraph_nums: List[int], full_text: str = "",
+                         max_chars: int = 220) -> str:
+    """Return a short excerpt from the first matching paragraph."""
+    if not paragraph_nums or not passage_idx or not passage_idx.get("paragraphs"):
+        return ""
+    for p in passage_idx["paragraphs"]:
+        if p["index"] == paragraph_nums[0]:
+            text = p["text"]
+            if len(text) > max_chars:
+                return text[:max_chars - 1] + "…"
+            return text
+    return ""
 
 
 def _generate_summary(word_count: int, sentence_count: int, paragraph_count: int) -> str:

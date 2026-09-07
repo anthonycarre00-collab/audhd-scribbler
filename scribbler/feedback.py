@@ -67,9 +67,25 @@ def plain_summary(what: str, found: str, next_step: str) -> str:
     return f"What this is: {what}\nWhat it found: {found}\nWhat you could do next: {next_step}"
 
 
-def format_flag(category: str, location: str, observation: str, effect: str, options: List[str]) -> Dict:
-    """Format a single flag for structured output."""
-    return {
+def format_flag(category: str, location: str, observation: str, effect: str, options: List[str],
+                loc: Dict = None, evidence_quote: str = "", why_it_matters: str = "") -> Dict:
+    """Format a single flag for structured output.
+
+    Args:
+        category: Short category label (e.g. 'rhythm', 'defensive_register').
+        location: Human-readable location (e.g. 'sentences 7-9', 'whole chapter').
+        observation: What was noticed.
+        effect: The effect on the reader.
+        options: 2-3 optional paths forward.
+        loc: Optional structured location for click-to-jump. Shape:
+            {"kind": "paragraph_range"|"paragraph"|"paragraph_list"|"whole_chapter",
+             "paragraphs": [7, 9],
+             "sentences": [14, 19],          # optional
+             "evidence_quote": "..."}
+        evidence_quote: 1-2 sentence excerpt showing the pattern in context.
+        why_it_matters: One sentence tying the observation to memoir craft.
+    """
+    flag = {
         "category": category,
         "location": location,
         "observation": observation,
@@ -77,3 +93,10 @@ def format_flag(category: str, location: str, observation: str, effect: str, opt
         "options": options,
         "formatted": make_observation(f"{observation} ({location})", effect, options),
     }
+    if loc:
+        flag["loc"] = loc
+    if evidence_quote:
+        flag["evidence_quote"] = evidence_quote
+    if why_it_matters:
+        flag["why_it_matters"] = why_it_matters
+    return flag
