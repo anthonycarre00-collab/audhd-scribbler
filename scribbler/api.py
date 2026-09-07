@@ -30,7 +30,7 @@ from .search import (
     get_tag_coverage, get_all_values_for_tag,
     search_tags_with_excerpts, search_text_in_all_files
 )
-from .export import export_markdown, export_plain_text, export_docx, export_analysis_report
+from .export import export_markdown, export_plain_text, export_docx, export_analysis_report, export_tag_index
 from . import settings as settings_module
 from .passage import build_index as build_passage_index
 
@@ -536,6 +536,118 @@ class Api:
             out = safety.export_project_zip()
             shutil.move(str(out), str(save_path))
             return {"ok": True, "path": _normalize_path(str(save_path))}
+        except Exception as e:
+            return {"ok": False, "error": str(e)}
+
+    def export_analysis(self, path: str, save_path: str, fmt: str = "md") -> dict:
+        """Export the most recent analysis results for a file as MD or JSON.
+
+        Pulls the latest stored analysis results from the DB. If synthesis is
+        available, it's included at the top of the report.
+        """
+        try:
+            save_path = _to_python_path(save_path)
+            if save_path is None:
+                return {"ok": False, "error": "No save location chosen"}
+            p = _to_python_path(path)
+            if p is None or not p.exists():
+                return {"ok": False, "error": "Source file not found"}
+
+            # Pull stored analysis results from DB
+            conn = db.get_db()
+            rows = conn.execute(
+                "SELECT analysis_type, result_json, created_at FROM analysis_results WHERE file_path = ? ORDER BY created_at DESC",
+                (str(p.resolve()),)
+            ).fetchall()
+            conn.close()
+
+            if not rows:
+                return {"ok": False, "error": "No stored analysis for this file. Run analysis first."}
+
+            analysis_results = {}
+            synthesis = None
+            for r in rows:
+                atype = r["analysis_type"]
+                try:
+                    data = json.loads(r["result_json"])
+                except Exception:
+                    continue
+                if atype == "_synthesis":
+                    synthesis = data
+                else:
+                    analysis_results[atype] = data
+
+            out = export_analysis_report(
+                file_path=str(p),
+                analysis_results=analysis_results,
+                output_path=str(save_path),
+                synthesis=synthesis,
+                fmt=fmt,
+            )
+            return {"ok": True, "path": _normalize_path(out), "tool_count": len(analysis_results)}
+        except Exception as e:
+            return {"ok": False, "error": str(e)}
+
+    def export_tag_index(self, save_path: str, fmt: str = "csv", include_excerpts: bool = True) -> dict:
+        """Export the tag_occurrences index as CSV, JSON, or Markdown."""
+        try:
+            save_path = _to_python_path(save_path)
+            if save_path is None:
+                return {"ok": False, "error": "No save location chosen"}
+            out = export_tag_index(format=fmt, include_excerpts=include_excerpts)
+            # Move from default location to user-chosen location
+            shutil.move(str(out), str(save_path))
+            return {"ok": True, "path": _normalize_path(str(save_path))}
+        except Exception as e:
+            return {"ok": False, "error": str(e)}
+
+    def get_saved_analysis(self, path: str) -> dict:
+        """Return the most recent stored analysis results for a file."""
+        try:
+            p = _to_python_path(path)
+            if p is None:
+                return {"ok": False, "error": "Invalid path"}
+            conn = db.get_db()
+            rows = conn.execute(
+                "SELECT analysis_type, result_json, created_at FROM analysis_results WHERE file_path = ? ORDER BY created_at DESC",
+                (str(p.resolve()),)
+            ).fetchall()
+            conn.close()
+            if not rows:
+                return {"ok": True, "results": {}, "synthesis": None, "count": 0}
+            results = {}
+            synthesis = None
+            for r in rows:
+                atype = r["analysis_type"]
+                try:
+                    data = json.loads(r["result_json"])
+                except Exception:
+                    continue
+                if atype == "_synthesis":
+                    synthesis = data
+                else:
+                    results[atype] = data
+            return {"ok": True, "results": _js_safe(results), "synthesis": _js_safe(synthesis), "count": len(results)}
+        except Exception as e:
+            return {"ok": False, "error": str(e)}
+
+    def list_analysis_history(self, path: str, tool: str = None) -> dict:
+        """Return timestamps of all prior analysis runs for a file."""
+        try:
+            p = _to_python_path(path)
+            if p is None:
+                return {"ok": False, "error": "Invalid path"}
+            history = db.get_analysis_history(str(p.resolve()), tool) if tool else []
+            if not tool:
+                # Get all history for the file
+                conn = db.get_db()
+                rows = conn.execute(
+                    "SELECT analysis_type, created_at FROM analysis_history WHERE file_path = ? ORDER BY created_at DESC LIMIT 50",
+                    (str(p.resolve()),)
+                ).fetchall()
+                conn.close()
+                history = [{"analysis_type": r["analysis_type"], "created_at": r["created_at"]} for r in rows]
+            return {"ok": True, "history": _js_safe(history), "count": len(history)}
         except Exception as e:
             return {"ok": False, "error": str(e)}
 
