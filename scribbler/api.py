@@ -299,6 +299,55 @@ class Api:
         self._push_progress(total, total, "Done")
         return {"ok": True, "tagged": tagged, "errors": errors}
 
+    def save_tag_edits(self, path: str, edits: dict) -> dict:
+        """Persist user-edited tags without re-running detection.
+
+        Args:
+            path: File path (forward-slash from JS).
+            edits: Dict of {tag_type: [values]}. Replaces the stored tags entirely.
+                  Tag types: characters, places, themes, era, voice, emotional_register
+        """
+        try:
+            p = _to_python_path(path)
+            if p is None or not p.exists():
+                return {"ok": False, "error": "File not found"}
+            # Get current meta from DB
+            current = db.get_file(str(p.resolve())) or {}
+            # Apply edits
+            for tag_type, values in edits.items():
+                if tag_type in ("characters", "places", "themes", "sensory", "beats"):
+                    current[tag_type] = values if isinstance(values, list) else [values]
+                elif tag_type in ("era", "voice", "emotional_register"):
+                    current[tag_type] = values[0] if isinstance(values, list) and values else (values if isinstance(values, str) else "")
+            # Ensure required fields
+            current["path"] = str(p.resolve())
+            current["filename"] = p.name
+            if "folder" not in current:
+                current["folder"] = "raw-dumps"
+            if "status" not in current:
+                current["status"] = "seedling"
+            if "word_count" not in current:
+                current["word_count"] = 0
+            # Save to DB
+            db.upsert_file(current)
+            # Re-index tag occurrences with the edited values
+            try:
+                from .tagger import _index_tag_occurrences
+                text = read_text_file(p)
+                if text.startswith("---"):
+                    end = text.find("---", 3)
+                    if end != -1:
+                        text = text[end + 3:].strip()
+                text = re.sub(r'<!-- SCRIBBLER SUMMARY[\s\S]*?-->', '', text).strip()
+                _index_tag_occurrences(str(p.resolve()), text, current)
+                db.index_file_content(str(p.resolve()), p.name, text)
+            except Exception as e:
+                # Don't fail the save if re-indexing fails
+                pass
+            return {"ok": True, "message": f"Saved tags for {p.name}", "path": _normalize_path(str(p.resolve()))}
+        except Exception as e:
+            return {"ok": False, "error": str(e)}
+
     # ── ANALYSIS ────────────────────────────────────────────────────
 
     def get_file_body(self, path: str) -> dict:
