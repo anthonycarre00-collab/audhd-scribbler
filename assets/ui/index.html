@@ -114,6 +114,18 @@ details summary{cursor:pointer;color:var(--muted);font-size:14px;margin-top:var(
 *:focus-visible{outline:2px solid var(--inbox-accent);outline-offset:2px}
 .zone-manuscript *:focus-visible{outline-color:var(--ms-accent)}
 button{user-select:none}
+/* === READER VIEW === */
+.reader-header{position:sticky;top:0;z-index:10;background:var(--panel);border-bottom:2px solid var(--ms-accent)}
+.reader-body{max-width:780px;margin:0 auto;padding:var(--sp-lg) var(--sp-md)}
+.reader-para{display:flex;gap:12px;margin-bottom:var(--sp-md);padding:var(--sp-sm) var(--sp-sm) var(--sp-sm) 0;border-radius:var(--r-sm);transition:background 0.2s}
+.reader-para:hover{background:var(--soft)}
+.reader-para.para-highlight{background:var(--ms-soft);animation:fadeHighlight 4s ease-out}
+.reader-para.para-has-match{background:rgba(212,165,116,0.10)}
+@keyframes fadeHighlight{0%{background:rgba(212,165,116,0.35)}100%{background:transparent}}
+.para-num{flex-shrink:0;font-family:var(--font-mono);font-size:11px;color:var(--muted);min-width:32px;padding-top:4px;user-select:none}
+.para-text{flex:1;font-family:var(--font-heading);font-size:17px;line-height:1.7;color:var(--ink)}
+.para-text mark{background:rgba(212,165,116,0.35);border-radius:2px;padding:0 2px}
+.para-text mark{background:linear-gradient(180deg,transparent 55%,rgba(212,165,116,0.45) 55%)}
 </style>
 </head>
 <body>
@@ -133,6 +145,7 @@ button{user-select:none}
         <button class="nav-item" data-view="inbox" onclick="navigate('inbox')">✉ Inbox <span class="nav-count" id="inboxCount"></span></button>
         <button class="nav-item" data-view="manuscript" onclick="navigate('manuscript')">📄 Manuscript <span class="nav-count" id="msCount"></span></button>
         <button class="nav-item" data-view="search" onclick="navigate('search')">🔍 Search</button>
+        <button class="nav-item" data-view="reader" onclick="navigate('reader')">📖 Reader</button>
         <button class="nav-item" data-view="exports" onclick="navigate('exports')">⬇ Export</button>
         <button class="nav-item" data-view="settings" onclick="navigate('settings')">⚙ Settings</button>
       </nav>
@@ -170,7 +183,7 @@ function waitForApi(){return new Promise(function(r){if(apiReady)return r();wind
 async function call(method){await waitForApi();var args=[].slice.call(arguments,1);try{return await window.pywebview.api[method].apply(window.pywebview.api,args)}catch(e){console.error('API '+method+' failed:',e);throw new Error(e.message||String(e))}}
 async function load(){try{var s=await call('get_status');aiAvailable=!!s.llm_available;document.getElementById('statusText').textContent=s.llm||'Ready';document.getElementById('statusDot').style.color=s.ok?'var(--success)':'var(--danger)';document.getElementById('versionTag')&&(document.getElementById('versionTag').textContent='v'+(s.version||'10.0')+' · '+(aiAvailable?'AI on':'AI off'));var f=await call('list_files');DATA.files=f.files||[];var t=await call('get_tools');DATA.tools=t.tools||{};DATA.catalog=t.catalog||{};updateNavCounts();if(currentView)navigate(currentView)}catch(e){setStatus('Could not load: '+e.message)}}
 function updateNavCounts(){var i=DATA.files.filter(function(f){return['raw-dumps','triage'].includes(f.folder)}).length;var m=DATA.files.filter(function(f){return['chapters','drafts','final'].includes(f.folder)}).length;document.getElementById('inboxCount').textContent=i||'';document.getElementById('msCount').textContent=m||''}
-function navigate(v){currentView=v;document.querySelectorAll('.nav-item').forEach(function(b){b.classList.toggle('active',b.dataset.view===v)});var c=document.getElementById('content');c.className='content';if(v==='inbox')c.classList.add('zone-inbox');if(v==='manuscript')c.classList.add('zone-manuscript');if(v==='home')renderHome();if(v==='inbox')renderInbox();if(v==='manuscript')renderManuscript();if(v==='search')renderSearch();if(v==='exports')renderExports();if(v==='settings')renderSettings()}
+function navigate(v){currentView=v;document.querySelectorAll('.nav-item').forEach(function(b){b.classList.toggle('active',b.dataset.view===v)});var c=document.getElementById('content');c.className='content';if(v==='inbox')c.classList.add('zone-inbox');if(v==='manuscript')c.classList.add('zone-manuscript');if(v==='home')renderHome();if(v==='inbox')renderInbox();if(v==='manuscript')renderManuscript();if(v==='search')renderSearch();if(v==='reader')renderReader();if(v==='exports')renderExports();if(v==='settings')renderSettings()}
 function setStatus(t){document.getElementById('statusText').textContent=t}
 function showToast(t,d){d=d||3000;var el=document.getElementById('toast');el.textContent=t;el.style.display='block';el.style.opacity='1';setTimeout(function(){el.style.opacity='0';setTimeout(function(){el.style.display='none'},300)},d)}
 function startTimer(title){operationCancelled=false;document.getElementById('thinkingOverlay').style.display='flex';document.getElementById('thinkingTitle').textContent=title||'Working…';document.getElementById('thinkingStep').textContent='';document.getElementById('thinkingTimer').textContent='00:00';document.getElementById('thinkingMessage').textContent=calmingMessages[0];timerStart=Date.now();var mi=0;timerInterval=setInterval(function(){var e=Math.floor((Date.now()-timerStart)/1000);var mm=String(Math.floor(e/60)).padStart(2,'0');var ss=String(e%60).padStart(2,'0');document.getElementById('thinkingTimer').textContent=mm+':'+ss},1000);messageInterval=setInterval(function(){mi=(mi+1)%calmingMessages.length;var el=document.getElementById('thinkingMessage');el.style.opacity='0';setTimeout(function(){el.textContent=calmingMessages[mi];el.style.opacity='1'},400)},8000)}
@@ -200,7 +213,8 @@ function openReaderFromLoc(el){var f=el.getAttribute('data-loc-file');var p1=par
 function prettyResult(data){var flat=[];function walk(v,path){if(v==null)return;if(Array.isArray(v)){if(v.length&&typeof v[0]==='object')flat.push({label:path,value:v});return}if(typeof v==='object'){for(var k in v){if(k==='analysis'||k==='observations'||k==='strengths'||k==='summary')continue;walk(v[k],path?path+' · '+k:k)}}else flat.push({label:path,value:v})}walk(data);return flat.slice(0,15)}
 function renderSearch(){document.getElementById('content').innerHTML='<div class="view active"><div class="view-header"><h1>Search</h1><p class="lead">Find every scene mentioning a character, place, or theme.</p></div><div class="card"><h3>Search by tag</h3><div class="grid-2"><div><label class="muted">Tag type</label><select id="searchTagType" class="note-title-input" onchange="loadTagValues()"><option value="characters">Character</option><option value="places">Place</option><option value="themes">Theme</option><option value="era">Era</option><option value="emotional_register">Emotional Register</option><option value="status">Status</option></select></div><div><label class="muted">Value</label><input type="text" id="searchValue" class="note-title-input" placeholder="Type a value" list="tagValueList"></div></div><datalist id="tagValueList"></datalist><div class="actions"><button class="btn-primary" onclick="runSearch()">Search</button></div></div><div id="searchResults"></div></div>';loadTagValues()}
 async function loadTagValues(){var tt=document.getElementById('searchTagType').value;try{var r=await call('get_tag_values',tt);document.getElementById('tagValueList').innerHTML=(r.values||[]).map(function(v){return'<option value="'+esc(v.value)+'">'+esc(v.value)+' ('+v.count+')</option>'}).join('')}catch(e){}}
-async function runSearch(){var tt=document.getElementById('searchTagType').value;var v=document.getElementById('searchValue').value.trim();if(!v)return showToast('Enter a value to search for');startTimer('Searching for '+v);var r=await call('search_tags',tt,v);stopTimer();if(!r.ok){showToast(r.error||'Search failed');return}if(!r.results||!r.results.length){document.getElementById('searchResults').innerHTML='<div class="empty">No files found.</div>';setStatus('No results');return}var cards=[];for(var i=0;i<r.results.length;i++){var f=r.results[i];var excerpts='';if(f.path){try{var occ=await call('find_in_file',f.path,tt,v);if(occ&&occ.ok&&occ.occurrences&&occ.occurrences.length){excerpts='<div style="margin-top:8px"><strong>Excerpts ('+occ.count+'):</strong>'+occ.occurrences.slice(0,5).map(function(o){return'<div class="finding"><strong>¶'+o.paragraph+'</strong> '+esc(o.context)+'</div>'}).join('')+'</div>'}}catch(e){}}cards.push('<div class="result-card"><div class="result-head"><div><h3>'+esc(f.filename||'unknown')+'</h3><div class="muted">'+(f.word_count||0)+' words · '+esc(f.status||'')+(f.era?' · '+esc(f.era):'')+(f.voice?' · '+esc(f.voice):'')+(f.emotional_register?' · '+esc(f.emotional_register):'')+'</div></div></div>'+(f.characters&&f.characters.length?'<div style="margin-top:6px"><strong>Characters:</strong> '+f.characters.map(function(c){return'<span class="chip chip-character">'+esc(c)+'</span>'}).join('')+'</div>':'')+(f.places&&f.places.length?'<div style="margin-top:6px"><strong>Places:</strong> '+f.places.map(function(p){return'<span class="chip chip-place">'+esc(p)+'</span>'}).join('')+'</div>':'')+(f.themes&&f.themes.length?'<div style="margin-top:6px"><strong>Themes:</strong> '+f.themes.map(function(t){return'<span class="chip chip-theme">'+esc(t)+'</span>'}).join('')+'</div>':'')+excerpts+'</div>')}document.getElementById('searchResults').innerHTML=cards.join('');setStatus('Found '+r.count+' file(s)')}
+async function runSearch(){var tt=document.getElementById('searchTagType').value;var v=document.getElementById('searchValue').value.trim();if(!v)return showToast('Enter a value to search for');startTimer('Searching for '+v);var r=await call('search_tags',tt,v);stopTimer();if(!r.ok){showToast(r.error||'Search failed');return}if(!r.results||!r.results.length){document.getElementById('searchResults').innerHTML='<div class="empty">No files found.</div>';setStatus('No results');return}var cards=[];for(var i=0;i<r.results.length;i++){var f=r.results[i];var excerpts='';if(f.path){try{var occ=await call('find_in_file',f.path,tt,v);if(occ&&occ.ok&&occ.occurrences&&occ.occurrences.length){excerpts='<div style="margin-top:8px"><strong>Excerpts ('+occ.count+'):</strong>'+occ.occurrences.slice(0,5).map(function(o){return'<div class="finding" style="cursor:pointer" onclick="openReader(\''+esc(f.path)+'\',\''+esc(v)+'\','+o.paragraph+')"><strong>¶'+o.paragraph+'</strong> '+esc(o.context)+' <span style="color:var(--ms-accent);font-size:12px">→ open in reader</span></div>'}).join('')+'</div>'}}catch(e){}}cards.push('<div class="result-card"><div class="result-head"><div><h3>'+esc(f.filename||'unknown')+'</h3><div class="muted">'+(f.word_count||0)+' words · '+esc(f.status||'')+(f.era?' · '+esc(f.era):'')+(f.voice?' · '+esc(f.voice):'')+(f.emotional_register?' · '+esc(f.emotional_register):'')+'</div></div></div>'+(f.characters&&f.characters.length?'<div style="margin-top:6px"><strong>Characters:</strong> '+f.characters.map(function(c){return'<span class="chip chip-character" style="cursor:pointer" onclick="openReader(\''+esc(f.path)+'\',\''+esc(c)+'\')">'+esc(c)+'</span>'}).join('')+'</div>':'')+(f.places&&f.places.length?'<div style="margin-top:6px"><strong>Places:</strong> '+f.places.map(function(p){return'<span class="chip chip-place" style="cursor:pointer" onclick="openReader(\''+esc(f.path)+'\',\''+esc(p)+'\')">'+esc(p)+'</span>'}).join('')+'</div>':'')+(f.themes&&f.themes.length?'<div style="margin-top:6px"><strong>Themes:</strong> '+f.themes.map(function(t){return'<span class="chip chip-theme" style="cursor:pointer" onclick="openReader(\''+esc(f.path)+'\',\''+esc(t)+'\')">'+esc(t)+'</span>'}).join('')+'</div>':'')+excerpts+'</div>')}document.getElementById('searchResults').innerHTML=cards.join('');setStatus('Found '+r.count+' file(s)')}
+
 function renderExports(){var files=DATA.files.filter(function(f){return['chapters','drafts','final'].includes(f.folder)});document.getElementById('content').innerHTML='<div class="view active"><div class="view-header"><h1>Export & Backup</h1><p class="lead">Outputs only. You choose where files land.</p></div><div class="card"><h3>Export one file</h3><div class="filelist">'+renderFileList(files,'export')+'</div><div class="actions" style="margin-top:12px"><button class="btn-secondary btn-sm" onclick="exportFile(\'docx\')">DOCX</button><button class="btn-secondary btn-sm" onclick="exportFile(\'md\')">Markdown</button><button class="btn-secondary btn-sm" onclick="exportFile(\'txt\')">Plain text</button></div></div><div class="card"><h3>Backup project</h3><p class="muted">Creates a ZIP with your writing folders and database.</p><button class="btn-primary" onclick="backupProject()">Choose location & create backup</button></div></div>'}
 async function exportFile(kind){var p=selected('export');if(!p.length)return showToast('Select one file first');try{var sr=await call('pick_save_path','export.'+kind);if(!sr||!sr.path)return;startTimer('Exporting');var r=await call('export_file',p[0],kind,sr.path);stopTimer();if(r.ok)showToast('Export created: '+r.path);else showToast(r.error)}catch(e){showToast('Export cancelled')}}
 async function backupProject(){try{var sr=await call('pick_save_path','Scribbler-Backup.zip');if(!sr||!sr.path)return;startTimer('Creating backup');var r=await call('backup_project',sr.path);stopTimer();if(r.ok)showToast('Backup created: '+r.path);else showToast(r.error)}catch(e){showToast('Backup cancelled')}}
@@ -211,8 +225,92 @@ function closeQuickNote(){document.getElementById('noteOverlay').style.display='
 async function saveNote(){var t=document.getElementById('noteTitle').value.trim();var tx=document.getElementById('noteBody').value.trim();if(!tx)return showToast('Write something first');var r=await call('save_note',t,tx);if(r.ok){closeQuickNote();showToast('Saved to Inbox');await load()}else showToast(r.error)}
 document.addEventListener('click',function(e){var btn=e.target.closest('[data-del]');if(btn){var path=decodeURIComponent(btn.getAttribute('data-del'));deleteFile(path)}});
 async function deleteFile(path){if(!window.confirm('Move this file to archive? You can recover it later.'))return;var r=await call('delete_file',path);if(r.ok){showToast(r.message);await load();navigate(currentView)}else showToast(r.error)}
-/* Phase 3 stub — full reader view implemented in Phase 3 */
-async function openReader(path,highlight,jumpTo){showToast('Reader view opens in Phase 3 — this observation links to '+Path_basename(path)+' ¶'+jumpTo);return false}
+/* === Phase 3: Reader view === */
+function renderReader(){var allFiles=DATA.files||[];var html='<div class="view active"><div class="view-header"><h1>📖 Reader</h1><p class="lead">Open any file to read it in-app. Search terms and tags highlight the matching passages.</p></div>';if(!allFiles.length){html+='<div class="empty">No files yet. Import something first.</div></div>';document.getElementById('content').innerHTML=html;return}html+='<div class="card"><h3>Pick a file</h3><div class="filelist" id="readerFileList">'+allFiles.map(function(f){return'<div class="filerow" style="cursor:pointer" onclick="openReader(\''+esc(f.path)+'\',[])"><div class="file-info"><div class="file-name">'+esc(f.filename)+'</div><div class="file-meta">'+(f.word_count||0)+' words · '+esc(f.folder)+'</div></div><span class="file-folder">open →</span></div>'}).join('')+'</div></div><div id="readerBody"></div></div>';document.getElementById('content').innerHTML=html}
+async function openReader(path,highlight,jumpTo){
+  if(!path)return showToast('No file path given');
+  highlight=highlight||[];if(typeof highlight==='string')highlight=[highlight];
+  try{
+    var body=await call('get_file_body',path);
+    if(!body||!body.ok){showToast(body&&body.error||'Could not open file');return}
+    renderReaderBody(body,highlight,jumpTo||0);
+  }catch(e){showToast('Reader error: '+e.message)}
+}
+function renderReaderBody(body,highlight,jumpTo){
+  var tags=body.tags||{};
+  var tagChips=[];
+  (tags.characters||[]).forEach(function(c){tagChips.push('<span class="chip chip-character" style="cursor:pointer" onclick="readerHighlightTerm(\''+esc(c)+'\')">'+esc(c)+'</span>')});
+  (tags.places||[]).forEach(function(p){tagChips.push('<span class="chip chip-place" style="cursor:pointer" onclick="readerHighlightTerm(\''+esc(p)+'\')">'+esc(p)+'</span>')});
+  (tags.themes||[]).forEach(function(t){tagChips.push('<span class="chip chip-theme" style="cursor:pointer" onclick="readerHighlightTerm(\''+esc(t)+'\')">'+esc(t)+'</span>')});
+  var parasHtml=(body.paragraphs||[]).map(function(p){
+    var text=p.text;
+    if(highlight&&highlight.length){
+      highlight.forEach(function(term){
+        if(!term)return;
+        var re=new RegExp('\\\\b'+term.replace(/[.*+?^${}()|[\\]\\\\]/g,'\\\\$&')+'\\\\b','gi');
+        text=text.replace(re,'<mark>$&</mark>');
+      });
+    }
+    return '<div class="reader-para" id="para-'+p.index+'" data-para="'+p.index+'"><span class="para-num">¶'+p.index+'</span><div class="para-text">'+esc(text).split('&lt;mark&gt;').join('<mark>').split('&lt;/mark&gt;').join('</mark>')+'</div></div>';
+  }).join('');
+  var metaHtml='';
+  var meta=body.meta||{};
+  if(Object.keys(meta).length){
+    metaHtml='<div class="muted" style="margin-top:4px;font-size:13px">'+Object.entries(meta).map(function(e){return esc(e[0])+': '+esc(e[1])}).join(' · ')+'</div>';
+  }
+  var html='<div class="card reader-header"><div class="result-head"><div><h3>'+esc(body.filename)+'</h3>'+metaHtml+'<div class="muted" style="margin-top:4px;font-size:13px">'+(body.word_count||0)+' words · '+(body.paragraph_count||0)+' paragraphs</div></div><button class="btn-ghost btn-sm" onclick="navigate(\'reader\')">← Back to file list</button></div>'+(tagChips.length?'<div style="margin-top:12px"><strong>Tags — click to highlight:</strong><div class="chips">'+tagChips.join('')+'</div></div>':'')+'<div style="margin-top:8px"><input type="text" id="readerSearchInput" class="note-title-input" placeholder="Highlight a word or phrase in this document…" onkeydown="if(event.key===\'Enter\')readerHighlightTerm(this.value)"><button class="btn-secondary btn-sm" onclick="readerClearHighlight()" style="margin-left:8px">Clear</button></div></div><div class="reader-body" id="readerBodyContent">'+parasHtml+'</div>';
+  var el=document.getElementById('readerBody');
+  if(!el){el=document.createElement('div');el.id='readerBody';document.getElementById('content').appendChild(el)}
+  el.innerHTML=html;
+  if(jumpTo){
+    setTimeout(function(){
+      var target=document.getElementById('para-'+jumpTo);
+      if(target){
+        target.scrollIntoView({behavior:'smooth',block:'center'});
+        target.classList.add('para-highlight');
+        setTimeout(function(){target.classList.remove('para-highlight')},4000);
+      }
+    },100);
+  }
+  setStatus('Reader: '+body.filename);
+}
+function readerHighlightTerm(term){
+  if(!term)return;
+  var paras=document.querySelectorAll('.reader-para');
+  var found=0;
+  var firstMatch=null;
+  var re=new RegExp('\\\\b'+term.replace(/[.*+?^${}()|[\\]\\\\]/g,'\\\\$&')+'\\\\b','i');
+  paras.forEach(function(p){
+    var textEl=p.querySelector('.para-text');
+    var raw=p.getAttribute('data-raw')||textEl.textContent;
+    p.setAttribute('data-raw',raw);
+    if(re.test(raw)){
+      found++;
+      if(!firstMatch)firstMatch=p;
+      var reG=new RegExp('\\\\b'+term.replace(/[.*+?^${}()|[\\]\\\\]/g,'\\\\$&')+'\\\\b','gi');
+      var highlighted=raw.replace(reG,function(m){return '‹mark›'+m+'‹/mark›'});
+      // Escape the rest, then unescape our markers
+      textEl.innerHTML=highlighted.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/‹mark›/g,'<mark>').replace(/‹\/mark›/g,'</mark>');
+      p.classList.add('para-has-match');
+    }else{
+      textEl.textContent=raw;
+      p.classList.remove('para-has-match');
+    }
+  });
+  if(firstMatch){firstMatch.scrollIntoView({behavior:'smooth',block:'center'});setStatus('Found "'+term+'" in '+found+' paragraph(s)')}
+  else setStatus('"'+term+'" not found in this document');
+}
+function readerClearHighlight(){
+  var paras=document.querySelectorAll('.reader-para');
+  paras.forEach(function(p){
+    var textEl=p.querySelector('.para-text');
+    var raw=p.getAttribute('data-raw');
+    if(raw)textEl.textContent=raw;
+    p.classList.remove('para-has-match');
+  });
+  var si=document.getElementById('readerSearchInput');if(si)si.value='';
+  setStatus('Highlight cleared');
+}
 function Path_basename(p){return p?p.split('/').pop().split('\\').pop():''}
 </script>
 </body>

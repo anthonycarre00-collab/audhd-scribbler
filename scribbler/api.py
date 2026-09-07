@@ -31,6 +31,7 @@ from .search import (
 )
 from .export import export_markdown, export_plain_text, export_docx, export_analysis_report
 from . import settings as settings_module
+from .passage import build_index as build_passage_index
 
 
 def _normalize_path(p):
@@ -298,6 +299,53 @@ class Api:
         return {"ok": True, "tagged": tagged, "errors": errors}
 
     # ── ANALYSIS ────────────────────────────────────────────────────
+
+    def get_file_body(self, path: str) -> dict:
+        """Return the body of a file, split into paragraphs, for the reader view."""
+        try:
+            p = _to_python_path(path)
+            if p is None or not p.exists():
+                return {"ok": False, "error": "File not found"}
+            text = read_text_file(p)
+            # Strip YAML frontmatter
+            meta = {}
+            if text.startswith("---"):
+                end = text.find("---", 3)
+                if end != -1:
+                    fm = text[3:end].strip()
+                    text = text[end + 3:].strip()
+                    # Parse simple YAML key: value lines
+                    for line in fm.split("\n"):
+                        if ":" in line:
+                            k, _, v = line.partition(":")
+                            meta[k.strip()] = v.strip().strip('"').strip("'")
+            # Strip scribbler summary comment
+            text = re.sub(r'<!-- SCRIBBLER SUMMARY[\s\S]*?-->', '', text).strip()
+            idx = build_passage_index(text)
+            # Fetch tags from DB if available
+            db_row = db.get_file(str(p.resolve())) or {}
+            tags = {
+                "characters": db_row.get("characters", []) or [],
+                "places": db_row.get("places", []) or [],
+                "themes": db_row.get("themes", []) or [],
+                "era": db_row.get("era", "") or "",
+                "voice": db_row.get("voice", "") or "",
+                "emotional_register": db_row.get("emotional_register", "") or "",
+            }
+            return {
+                "ok": True,
+                "path": _normalize_path(str(p.resolve())),
+                "filename": p.name,
+                "folder": db_row.get("folder", ""),
+                "word_count": idx["word_count"],
+                "char_count": idx["char_count"],
+                "paragraphs": [{"index": pp["index"], "text": pp["text"]} for pp in idx["paragraphs"]],
+                "paragraph_count": len(idx["paragraphs"]),
+                "meta": meta,
+                "tags": _js_safe(tags),
+            }
+        except Exception as e:
+            return {"ok": False, "error": str(e)}
 
     def analyze(self, paths: list, tools: list) -> dict:
         if not paths:
