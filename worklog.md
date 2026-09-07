@@ -48,3 +48,37 @@ Stage Summary:
 - Low-shame feedback grammar throughout: "I noticed X. It had effect Y. Would you like A, B, or keep as-is?"
 - Growth-metaphor status: seedling → growing → shaping → polishing → resting
 - Ready for git push to private GitHub repo
+
+---
+Task ID: v10-phases
+Agent: Super Z (main)
+Task: Execute the 14-phase v10 plan — improve tagging, search, analysis, exports, and UX for the standalone Windows desktop app.
+
+Work Log:
+- Saved PLAN-v10.md as the locked planning document (committed)
+- Phase 1: Wired synthesis into analyze(); fixed hardcoded AI flag=false in previewTags/applyTags; renderSynthesis card on top of analysis results
+- Phase 2: Built scribbler/passage.py — shared paragraph/sentence indexer (foundation for reader + observation locations)
+- Phase 3: Added get_file_body API + Reader view with paragraph anchors, tag-chip highlighting, jump-to-paragraph
+- Phase 4: Added tag_occurrences table + FTS5 full-text search; tagger now indexes every tag at paragraph level
+- Phase 5: Search excerpts clickable → openReader(path, term, paragraph)
+- Phase 6: Free-text search across all files (FTS5 with Python fallback)
+- Phase 7: Structured loc + evidence_quote + why_it_matters on craft and editor observations
+- Phase 8: Analysis export (MD with synthesis + ¶ anchors; JSON for round-tripping); tag index export (CSV/JSON/MD)
+- Phase 9: Analysis history view — 📚 History button on each manuscript row, shows saved analysis without re-running
+- Phase 10: Tag index export (covered in Phase 8 implementation)
+- Phase 11: Editable tag preview — chips have × to remove, add-tag input, save_tag_edits API method
+- Phase 12: AI entity extraction — _classify_entity rule-based disambiguation + STOPLIST_CHARACTERS + LLM-typed entities (persons/places/objects/relationships/emotional_beats/time_markers)
+- Phase 13: New tag types — detect_time_markers (regex), detect_objects (spaCy NOUN + frequency), DB columns added with migration
+- Phase 14: Two new analysis tools — memory_truth (memory hedges, absolutes, other-mind claims) and emotional_beats (named vs shown emotions, emotional turns, flat scenes)
+- Final: Filtered pronouns (my, i, he, she, they, etc.) from character detection
+- All 10 phase test scripts PASS (phase1, 2, 3, 4, 5, 7, 8, 9_11, 12_13, 14)
+- Final end-to-end test confirms all 14 phases work together
+
+Stage Summary:
+- 14 new commits on main, all tests green
+- New API methods: get_file_body, search_tags_with_excerpts, search_full_text, save_tag_edits, get_saved_analysis, list_analysis_history, export_analysis, export_tag_index
+- New backend modules: scribbler/passage.py, scribbler/analyzers/memory_truth.py, scribbler/analyzers/emotional_beats.py
+- New DB tables/columns: tag_occurrences, file_content_fts (FTS5), files.relationships, files.emotional_beats, files.time_markers, files.objects
+- UI additions: Reader view (sidebar), free-text search input, analysis export cards, tag index export cards, 📚 History button, editable tag chips, synthesis card with top things to notice
+- Analysis tools now produce structured loc, evidence_quote, why_it_matters on observations — every observation is click-to-jump to the reader
+- Push to GitHub pending — credentials not in this session's environment
