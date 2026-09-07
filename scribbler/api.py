@@ -1,18 +1,14 @@
 #!/usr/bin/env python3
-"""The pywebview Api class — bridges Python backend to JS frontend.
-
-Each method is callable from JS as: await window.pywebview.api.method_name(args)
-pywebview runs these on a worker thread; the UI stays responsive.
-"""
+"""The pywebview Api class — bridges Python backend to JS frontend."""
 import os
 import sys
 import json
 import shutil
+import re
 from pathlib import Path
 from datetime import datetime
 from typing import Any, Dict, List, Optional
 
-# Fix Windows Unicode
 try:
     sys.stdout.reconfigure(encoding="utf-8", errors="replace")
     sys.stderr.reconfigure(encoding="utf-8", errors="replace")
@@ -37,13 +33,33 @@ from .export import export_markdown, export_plain_text, export_docx, export_anal
 from . import settings as settings_module
 
 
+def _normalize_path(p):
+    """Normalize a path to forward slashes for JS safety."""
+    if p is None:
+        return None
+    s = str(p)
+    # On Windows, pywebview may return paths with backslashes
+    # Convert to forward slashes for JS, then Python Path handles both
+    return s.replace("\\", "/")
+
+
+def _to_python_path(p):
+    """Convert any path format (JS forward-slash, Windows backslash, tuple) to a Python Path."""
+    if p is None:
+        return None
+    if isinstance(p, (list, tuple)):
+        p = p[0] if p else None
+        if p is None:
+            return None
+    # Handle forward-slash paths from JS (convert to OS-native)
+    s = str(p)
+    return Path(s)
+
+
 class Api:
     """Exposes all Scribbler functionality to the pywebview JS frontend."""
 
-    # ── STATUS & FILES ──────────────────────────────────────────────
-
     def get_status(self) -> dict:
-        """Return app status — AI availability, version, file counts."""
         stats = db.get_stats()
         return {
             "ok": True,
@@ -54,16 +70,16 @@ class Api:
         }
 
     def list_files(self) -> dict:
-        """Return all files with metadata."""
+        """Return all files with metadata. Paths use forward slashes for JS safety."""
         all_files = db.get_all_files()
-        # Also scan folders for unindexed files
         seen = set()
         out = []
         for f in all_files:
             p = f.get("path")
-            seen.add(p)
+            if p:
+                seen.add(str(Path(p).resolve()))
             out.append({
-                "path": p,
+                "path": _normalize_path(p),
                 "filename": f.get("filename", ""),
                 "folder": f.get("folder", ""),
                 "word_count": f.get("word_count", 0),
@@ -71,6 +87,7 @@ class Api:
                 "last_analyzed": f.get("last_analyzed", ""),
                 "characters": f.get("characters", []),
                 "themes": f.get("themes", []),
+                "places": f.get("places", []),
                 "era": f.get("era", ""),
                 "voice": f.get("voice", ""),
                 "emotional_register": f.get("emotional_register", ""),
@@ -89,7 +106,7 @@ class Api:
                             except Exception:
                                 wc = 0
                             out.append({
-                                "path": str(p),
+                                "path": _normalize_path(str(p)),
                                 "filename": p.name,
                                 "folder": folder,
                                 "word_count": wc,
@@ -97,6 +114,7 @@ class Api:
                                 "last_analyzed": "",
                                 "characters": [],
                                 "themes": [],
+                                "places": [],
                                 "era": "",
                                 "voice": "",
                                 "emotional_register": "",
@@ -104,16 +122,77 @@ class Api:
         return {"files": sorted(out, key=lambda x: (x["folder"], x["filename"].lower()))}
 
     def get_tools(self) -> dict:
-        """Return the 17-tool analysis catalog."""
         return {
             "tools": {k: {"title": v[0], "group": v[1], "purpose": v[2]} for k, v in _get_tools_dict().items()},
             "catalog": dict(ANALYSIS_CATALOG),
         }
 
+    # ── FILE DIALOGS ────────────────────────────────────────────────
+
+    def pick_open_files(self) -> dict:
+        """Open native file picker. Returns paths with forward slashes."""
+        try:
+            import webview
+            if not webview.windows:
+                return {"paths": []}
+            window = webview.windows[0]
+            result = window.create_file_dialog(
+                webview.OPEN_DIALOG,
+                allow_multiple=True,
+                file_types=('Text Files (*.txt;*.md;*.text)', 'All Files (*.*)'),
+            )
+            if not result:
+                return {"paths": []}
+            # pywebview may return a string, a list, or a tuple
+            if isinstance(result, str):
+                paths = [result]
+            elif isinstance(result, (list, tuple)):
+                paths = list(result)
+            else:
+                paths = [str(result)]
+            # Normalize to forward slashes
+            paths = [_normalize_path(p) for p in paths]
+            return {"paths": paths}
+        except Exception as e:
+            return {"paths": [], "error": str(e)}
+
+    def pick_save_path(self, default_name: str = "export.txt") -> dict:
+        """Open native save dialog. Returns path with forward slashes."""
+        try:
+            import webview
+            if not webview.windows:
+                return {"path": None}
+            window = webview.windows[0]
+
+            if default_name.endswith(".docx"):
+                file_types = ('Word Document (*.docx)',)
+            elif default_name.endswith(".md"):
+                file_types = ('Markdown (*.md)',)
+            elif default_name.endswith(".zip"):
+                file_types = ('ZIP Archive (*.zip)',)
+            else:
+                file_types = ('Text Files (*.txt)',)
+
+            result = window.create_file_dialog(
+                webview.SAVE_DIALOG,
+                save_filename=default_name,
+                file_types=file_types,
+            )
+            if not result:
+                return {"path": None}
+            # pywebview may return a string or tuple
+            if isinstance(result, (list, tuple)):
+                path = result[0] if result else None
+            else:
+                path = str(result)
+            return {"path": _normalize_path(path)}
+        except Exception as e:
+            return {"path": None, "error": str(e)}
+
     # ── IMPORT & FILES ──────────────────────────────────────────────
 
     def import_files(self, destination: str, file_paths: list) -> dict:
-        """Copy files into a project folder. file_paths come from native file dialog."""
+        """Copy files into a project folder."""
         if destination not in ("raw-dumps", "triage", "chapters", "drafts", "final"):
             return {"ok": False, "error": f"Invalid destination: {destination}"}
         dest_folder = PROJECT_ROOT / destination
@@ -122,8 +201,8 @@ class Api:
         errors = []
         for fp in file_paths:
             try:
-                src = Path(fp)
-                if not src.exists():
+                src = _to_python_path(fp)
+                if src is None or not src.exists():
                     errors.append(f"{fp}: file not found")
                     continue
                 name = _safe_name(src.name)
@@ -135,7 +214,6 @@ class Api:
         return {"ok": True, "message": f"Imported {count} file(s) into {destination}", "errors": errors}
 
     def save_note(self, title: str, text: str) -> dict:
-        """Save a quick note to raw-dumps."""
         if not text.strip():
             return {"ok": False, "error": "Note is empty"}
         name = _safe_name((title.strip() or f"note-{datetime.now():%Y%m%d-%H%M%S}") + ".txt")
@@ -146,26 +224,23 @@ class Api:
     def delete_file(self, path: str) -> dict:
         """Move a file to archive."""
         try:
-            p = Path(path)
-            if not p.exists():
+            p = _to_python_path(path)
+            if p is None or not p.exists():
                 return {"ok": False, "error": "File not found"}
             archive = PROJECT_ROOT / "archive"
             archive.mkdir(exist_ok=True)
             dest = _unique_path(archive, p.name)
             p.rename(dest)
-            # Delete from DB — try both the original path and resolved path
+            # Delete from DB — try every possible path variation
             conn = db.get_db()
-            resolved = str(p.resolve())
-            original = str(p)
-            # Try multiple path variations the DB might store
-            for path_var in [resolved, original, path]:
+            for path_var in [str(p.resolve()), str(p), path, _normalize_path(path)]:
                 conn.execute("DELETE FROM files WHERE path = ?", (path_var,))
                 conn.execute("DELETE FROM analysis_results WHERE file_path = ?", (path_var,))
-            # Also try LIKE match for relative/absolute mismatches
+            # Also try LIKE match on filename
             conn.execute("DELETE FROM files WHERE path LIKE ?", (f"%{p.name}%",))
             conn.execute("DELETE FROM analysis_results WHERE file_path LIKE ?", (f"%{p.name}%",))
             conn.execute("INSERT INTO activity_log (timestamp, action, file_path, details) VALUES (?, ?, ?, ?)",
-                         (datetime.now().isoformat(), "delete", original, f"Moved to archive/{dest.name}"))
+                         (datetime.now().isoformat(), "delete", str(p), f"Moved to archive/{dest.name}"))
             conn.commit()
             conn.close()
             return {"ok": True, "message": f"Moved to archive/{dest.name}"}
@@ -175,25 +250,22 @@ class Api:
     # ── TAGGING ─────────────────────────────────────────────────────
 
     def tag_preview(self, paths: list, use_ai: bool = False) -> dict:
-        """Preview tags for selected files without applying."""
         if not paths:
             return {"ok": False, "error": "Select one or more files first"}
         previews = []
         errors = []
         for raw_path in paths:
             try:
-                p = Path(raw_path)
+                p = _to_python_path(raw_path)
                 text = read_text_file(p)
-                # Strip frontmatter
                 if text.startswith("---"):
                     end = text.find("---", 3)
                     if end != -1:
                         text = text[end + 3:].strip()
-                import re
                 text = re.sub(r'<!-- SCRIBBLER SUMMARY[\s\S]*?-->', '', text).strip()
                 previews.append({
                     "filename": p.name,
-                    "path": str(p),
+                    "path": _normalize_path(str(p)),
                     "word_count": len(text.split()),
                     "voice": tagger.detect_voice(text),
                     "era": tagger.detect_era(text),
@@ -208,18 +280,17 @@ class Api:
         return {"ok": True, "preview": previews, "errors": errors}
 
     def tag_files(self, paths: list, use_llm: bool = True) -> dict:
-        """Apply tags to selected files. Pushes progress via evaluate_js."""
         if not paths:
             return {"ok": False, "error": "Select one or more files first"}
         tagged = []
         errors = []
         total = len(paths)
         for i, raw_path in enumerate(paths):
-            # Push progress to JS
             self._push_progress(i + 1, total, f"Tagging {Path(raw_path).name}")
             try:
-                meta = tagger.tag_file(raw_path, use_llm=use_llm)
-                tagged.append(Path(raw_path).name)
+                p = _to_python_path(raw_path)
+                meta = tagger.tag_file(str(p), use_llm=use_llm)
+                tagged.append(p.name)
             except Exception as e:
                 errors.append(f"{Path(raw_path).name}: {e}")
         self._push_progress(total, total, "Done")
@@ -228,33 +299,27 @@ class Api:
     # ── ANALYSIS ────────────────────────────────────────────────────
 
     def analyze(self, paths: list, tools: list) -> dict:
-        """Run analysis tools on selected files. Pushes step progress."""
         if not paths:
             return {"ok": False, "error": "Select one or more manuscript files first"}
         if not tools:
             return {"ok": False, "error": "Choose at least one analysis tool"}
-
         all_files = self.list_files().get("files", [])
         results = []
         total_steps = len(paths) * len(tools)
         step = 0
-
         for raw_path in paths:
             try:
-                p = Path(raw_path)
+                p = _to_python_path(raw_path)
                 text = read_text_file(p)
-                # Strip frontmatter
                 if text.startswith("---"):
                     end = text.find("---", 3)
                     if end != -1:
                         text = text[end + 3:].strip()
-                import re
                 text = re.sub(r'<!-- SCRIBBLER SUMMARY[\s\S]*?-->', '', text).strip()
-
                 per_file = {}
                 for tool_key in tools:
                     step += 1
-                    self._push_progress(step, total_steps, f"Analysing {p.name} · {tool_key}")
+                    self._push_progress(step, total_steps, f"Analysing {p.name} - {tool_key}")
                     try:
                         result = _run_tool(tool_key, text, all_files)
                         per_file[tool_key] = _js_safe(result)
@@ -267,12 +332,10 @@ class Api:
                 results.append({"filename": p.name, "results": per_file})
             except Exception as e:
                 results.append({"filename": raw_path, "results": {}, "error": str(e)})
-
         self._push_progress(total_steps, total_steps, "Done")
         return {"ok": True, "results": results, "message": f"Analysed {len(paths)} file(s) with {len(tools)} tool(s)"}
 
     def compare_chapters(self, paths: list) -> dict:
-        """Run cross-chapter comparison (voice drift, pacing, tone)."""
         if not paths or len(paths) < 2:
             return {"ok": False, "error": "Select at least 2 chapters to compare"}
         chapters = []
@@ -280,7 +343,7 @@ class Api:
         for i, raw_path in enumerate(paths):
             self._push_progress(i + 1, total, f"Reading {Path(raw_path).name}")
             try:
-                p = Path(raw_path)
+                p = _to_python_path(raw_path)
                 text = read_text_file(p)
                 if text.startswith("---"):
                     end = text.find("---", 3)
@@ -299,98 +362,44 @@ class Api:
     # ── SEARCH ──────────────────────────────────────────────────────
 
     def search_tags(self, tag_type: str, value: str) -> dict:
-        """Search files by a single tag."""
         results = search_by_tag(tag_type, value)
         return {"ok": True, "results": _js_safe(results), "count": len(results)}
 
     def search_multi_tags(self, filters: dict) -> dict:
-        """Search with multiple tag filters (AND logic)."""
         results = search_multi(filters)
         return {"ok": True, "results": _js_safe(results), "count": len(results)}
 
     def find_in_file(self, path: str, tag_type: str, value: str) -> dict:
-        """Find where a tag value appears in a file (paragraph-level)."""
-        occurrences = find_tag_in_file(path, tag_type, value)
+        p = _to_python_path(path)
+        if p is None:
+            return {"ok": False, "occurrences": [], "count": 0}
+        occurrences = find_tag_in_file(str(p), tag_type, value)
         return {"ok": True, "occurrences": _js_safe(occurrences), "count": len(occurrences)}
 
     def tag_coverage(self, path: str) -> dict:
-        """Get tag coverage report for a file."""
-        coverage = get_tag_coverage(path)
+        p = _to_python_path(path)
+        if p is None:
+            return {"ok": False, "coverage": {}}
+        coverage = get_tag_coverage(str(p))
         return {"ok": True, "coverage": _js_safe(coverage)}
 
     def get_tag_values(self, tag_type: str) -> dict:
-        """Get all unique values for a tag type."""
         values = get_all_values_for_tag(tag_type)
         return {"ok": True, "values": _js_safe(values)}
 
     # ── EXPORT ──────────────────────────────────────────────────────
 
-    def pick_open_files(self) -> dict:
-        """Open a native file picker dialog. Returns selected file paths."""
-        try:
-            import webview
-            window = webview.windows[0] if webview.windows else None
-            if not window:
-                return {"paths": []}
-            result = window.create_file_dialog(
-                webview.OPEN_DIALOG,
-                allow_multiple=True,
-                file_types=('Text Files (*.txt;*.md;*.text)', 'All Files (*.*)'),
-            )
-            if result:
-                return {"paths": result if isinstance(result, list) else [result]}
-            return {"paths": []}
-        except Exception as e:
-            return {"paths": [], "error": str(e)}
-
-    def pick_save_path(self, default_name: str = "export.txt") -> dict:
-        """Open a native save dialog. Returns chosen save path."""
-        try:
-            import webview
-            window = webview.windows[0] if webview.windows else None
-            if not window:
-                return {"path": None}
-            # Determine file extension filter
-            ext = ".txt"
-            if default_name.endswith(".docx"):
-                ext = ".docx"
-                file_types = ('Word Document (*.docx)',)
-            elif default_name.endswith(".md"):
-                ext = ".md"
-                file_types = ('Markdown (*.md)',)
-            elif default_name.endswith(".zip"):
-                ext = ".zip"
-                file_types = ('ZIP Archive (*.zip)',)
-            else:
-                file_types = ('Text Files (*.txt)',)
-
-            result = window.create_file_dialog(
-                webview.SAVE_DIALOG,
-                save_filename=default_name,
-                file_types=file_types,
-            )
-            if result:
-                return {"path": result}
-            return {"path": None}
-        except Exception as e:
-            return {"path": None, "error": str(e)}
-
     def export_file(self, path: str, kind: str, save_path: str) -> dict:
         """Export a file to docx/md/txt at a user-chosen location."""
         try:
-            # save_path may come as a tuple from pywebview — extract the string
-            if isinstance(save_path, (list, tuple)):
-                save_path = save_path[0] if save_path else None
-            if not save_path:
+            # save_path may come as a tuple/list from pywebview
+            save_path = _to_python_path(save_path)
+            if save_path is None:
                 return {"ok": False, "error": "No save location chosen"}
+            save_path.parent.mkdir(parents=True, exist_ok=True)
 
-            # Generate the export to the user's chosen path directly
-            from pathlib import Path as P
-            dest = P(save_path)
-            dest.parent.mkdir(parents=True, exist_ok=True)
-
-            src = P(path)
-            if not src.exists():
+            src = _to_python_path(path)
+            if src is None or not src.exists():
                 return {"ok": False, "error": "Source file not found"}
 
             if kind == "docx":
@@ -405,17 +414,15 @@ class Api:
                     end = content.find("---", 3)
                     if end != -1:
                         content = content[end + 3:].strip()
-                import re as _re
-                content = _re.sub(r'<!-- SCRIBBLER SUMMARY[\s\S]*?-->', '', content).strip()
+                content = re.sub(r'<!-- SCRIBBLER SUMMARY[\s\S]*?-->', '', content).strip()
                 content = _sanitize_for_docx(content)
                 doc = Document()
                 style = doc.styles['Normal']
                 style.font.name = 'Calibri'
                 style.font.size = Pt(11)
-                title = src.stem.replace('-', ' ').replace('_', ' ').title()
-                title = _sanitize_for_docx(title)
+                title = _sanitize_for_docx(src.stem.replace('-', ' ').replace('_', ' ').title())
                 doc.add_heading(title, level=1)
-                for para in _re.split(r'\n\s*\n', content):
+                for para in re.split(r'\n\s*\n', content):
                     para = para.strip()
                     if not para:
                         continue
@@ -427,34 +434,33 @@ class Api:
                         doc.add_heading(_sanitize_for_docx(para[4:]), level=3)
                     else:
                         doc.add_paragraph(_sanitize_for_docx(para))
-                doc.save(str(dest))
+                doc.save(str(save_path))
             elif kind == "md":
                 content = read_text_file(src)
-                write_text_file(dest, content)
+                write_text_file(save_path, content)
             elif kind == "txt":
                 content = read_text_file(src)
                 if content.startswith("---"):
                     end = content.find("---", 3)
                     if end != -1:
                         content = content[end + 3:].strip()
-                import re as _re2
-                content = _re2.sub(r'<!-- SCRIBBLER SUMMARY[\s\S]*?-->', '', content).strip()
-                write_text_file(dest, content)
+                content = re.sub(r'<!-- SCRIBBLER SUMMARY[\s\S]*?-->', '', content).strip()
+                write_text_file(save_path, content)
             else:
                 return {"ok": False, "error": f"Unknown format: {kind}"}
-
-            return {"ok": True, "path": str(dest)}
+            return {"ok": True, "path": _normalize_path(str(save_path))}
         except Exception as e:
             return {"ok": False, "error": str(e)}
 
     def backup_project(self, save_path: str) -> dict:
         """Create a ZIP backup at a user-chosen location."""
         try:
+            save_path = _to_python_path(save_path)
+            if save_path is None:
+                return {"ok": False, "error": "No save location chosen"}
             out = safety.export_project_zip()
-            if save_path and save_path != out:
-                shutil.move(out, save_path)
-                out = save_path
-            return {"ok": True, "path": out}
+            shutil.move(str(out), str(save_path))
+            return {"ok": True, "path": _normalize_path(str(save_path))}
         except Exception as e:
             return {"ok": False, "error": str(e)}
 
@@ -468,24 +474,22 @@ class Api:
         settings_module.set_setting("api_key", api_key)
         return {"ok": True, "message": f"Provider set to {provider}"}
 
-    # ── INTERNAL HELPERS ────────────────────────────────────────────
+    # ── INTERNAL ────────────────────────────────────────────────────
 
     def _push_progress(self, step: int, total: int, message: str):
-        """Push progress to the JS frontend via evaluate_js."""
         try:
             import webview
             for window in webview.windows:
+                # Escape single quotes in message for JS
+                safe_msg = message.replace("'", "\\'")
                 window.evaluate_js(
-                    f"window.__scribblerProgress__({step}, {total}, '{message}')"
+                    f"window.__scribblerProgress__({step}, {total}, '{safe_msg}')"
                 )
         except Exception:
-            pass  # In headless/test mode, no window exists
+            pass
 
-
-# ── MODULE-LEVEL HELPERS ────────────────────────────────────────────
 
 def _get_tools_dict():
-    """Return the TOOLS dict mapping tool keys to (title, group, purpose, fn)."""
     return {
         "craft": ("Craft & Rhythm", "Prose", "Sentence rhythm, balance and craft signals.", craft.analyze),
         "voice": ("Voice & Tense", "Prose", "Narrator voice, tense and narrative stance.", voice_tense.analyze),
@@ -494,21 +498,20 @@ def _get_tools_dict():
         "themes": ("Themes & Emotional Arc", "Story", "Themes and emotional movement.", themes.analyze),
         "editor": ("Editorial Patterns", "Editorial", "Clarity, redundancy and editorial signals.", editor.analyze),
         "repetition": ("Repetition & Echoes", "Prose", "Repeated words and phrases.", None),
-        "pacing": ("Pacing & Momentum", "Structure", "Acceleration, slowing and sentence/paragraph movement.", None),
-        "structure": ("Structure & Chapter Purpose", "Structure", "Openings, endings, paragraph shape and structural signals.", None),
+        "pacing": ("Pacing & Momentum", "Structure", "Acceleration, slowing and movement.", None),
+        "structure": ("Structure & Chapter Purpose", "Structure", "Openings, endings, paragraph shape.", None),
         "memoir": ("Memoir Lens", "Memoir", "Reflection, event balance and memory uncertainty.", None),
-        "reader": ("Reader Experience", "Editorial", "Opening, dialogue and possible reader-friction signals.", None),
+        "reader": ("Reader Experience", "Editorial", "Opening, dialogue and reader-friction signals.", None),
         "research": ("Research & Fact Flags", "Accuracy", "Dates and claims worth checking.", None),
         "cadence": ("Cadence & Rhythm", "Prose", "Sentence movement, pauses and contrast.", cadence.analyze),
         "motifs": ("Motifs & Echoes", "Story", "Recurring words/phrases as candidate motifs.", None),
-        "anchors": ("Structural Anchors", "Structure", "Recurring openings, endings and textual anchors.", None),
+        "anchors": ("Structural Anchors", "Structure", "Recurring openings, endings and anchors.", None),
         "voice_dna": ("Voice DNA", "Writer", "Compare against approved personal writing samples.", voice_dna.analyze),
         "reader_perception": ("Reader Perception", "Writer", "Evidence-first impression of narrator and characters.", reader_perception.analyze),
     }
 
 
 def _run_tool(key, text, all_files):
-    """Dispatch to the right analyzer."""
     tools = _get_tools_dict()
     meta = tools[key]
     fn = meta[3]
@@ -525,7 +528,7 @@ def _run_tool(key, text, all_files):
 
 def _safe_name(n):
     n = Path(str(n or "untitled.txt")).name
-    n = __import__("re").sub(r"[^A-Za-z0-9._ -]+", "_", n).strip(" .") or "untitled.txt"
+    n = re.sub(r"[^A-Za-z0-9._ -]+", "_", n).strip(" .") or "untitled.txt"
     return n if Path(n).suffix.lower() in (".txt", ".md", ".text") else n + ".txt"
 
 
@@ -541,7 +544,6 @@ def _unique_path(folder, name):
 
 
 def _js_safe(v):
-    """Recursively convert to JSON-safe primitives."""
     if isinstance(v, dict):
         return {str(k): _js_safe(x) for k, x in v.items()}
     if isinstance(v, (list, tuple)):
@@ -549,5 +551,5 @@ def _js_safe(v):
     if isinstance(v, (str, int, float, bool)) or v is None:
         return v
     if isinstance(v, Path):
-        return str(v)
+        return _normalize_path(str(v))
     return str(v)
