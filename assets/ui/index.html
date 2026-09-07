@@ -126,6 +126,30 @@ button{user-select:none}
 .para-text{flex:1;font-family:var(--font-heading);font-size:17px;line-height:1.7;color:var(--ink)}
 .para-text mark{background:rgba(212,165,116,0.35);border-radius:2px;padding:0 2px}
 .para-text mark{background:linear-gradient(180deg,transparent 55%,rgba(212,165,116,0.45) 55%)}
+/* === MAP VIEW (relationship graph) === */
+.map-svg{width:100%;height:520px;background:var(--panel);border:1px solid var(--line);border-radius:var(--r-md);display:block}
+.map-node-circle{fill:var(--ms-soft);stroke:var(--ms-accent);stroke-width:2px;cursor:pointer;transition:fill 0.2s}
+.map-node-circle:hover{fill:var(--ms-accent);fill-opacity:0.3}
+.map-node-circle.highlighted{fill:var(--ms-accent);fill-opacity:0.5}
+.map-node-label{font-family:var(--font-body);font-size:13px;font-weight:600;fill:var(--ink);text-anchor:middle;pointer-events:none}
+.map-edge-line{stroke:var(--muted);stroke-opacity:0.4;stroke-width:1.5px;transition:stroke-opacity 0.2s}
+.map-edge-line.highlighted{stroke:var(--ms-accent);stroke-opacity:0.9;stroke-width:2.5px}
+.map-edge-line.inferred{stroke-dasharray:4 3}
+.map-edge-label{font-family:var(--font-body);font-size:10px;fill:var(--muted);text-anchor:middle;pointer-events:none}
+.map-legend{display:flex;gap:var(--sp-md);flex-wrap:wrap;margin-top:var(--sp-sm);font-size:12px;color:var(--muted)}
+.map-legend-item{display:flex;align-items:center;gap:6px}
+.map-legend-swatch{width:14px;height:14px;border-radius:50%;border:2px solid var(--ms-accent)}
+/* === COMPARE VIEW (emotional arc chart) === */
+.compare-svg{width:100%;height:420px;background:var(--panel);border:1px solid var(--line);border-radius:var(--r-md);display:block}
+.compare-axis{stroke:var(--line);stroke-width:1px}
+.compare-grid{stroke:var(--line);stroke-width:0.5px;stroke-dasharray:2 3;stroke-opacity:0.6}
+.compare-axis-label{font-family:var(--font-body);font-size:11px;fill:var(--muted)}
+.compare-curve{fill:none;stroke-width:2.5px;transition:stroke-width 0.2s}
+.compare-curve:hover{stroke-width:4px}
+.compare-zero-line{stroke:var(--muted);stroke-width:1px;stroke-dasharray:4 4;stroke-opacity:0.5}
+.compare-legend{display:flex;gap:var(--sp-md);flex-wrap:wrap;margin-top:var(--sp-sm)}
+.compare-legend-item{display:flex;align-items:center;gap:6px;font-size:13px}
+.compare-legend-swatch{width:18px;height:3px;border-radius:2px}
 </style>
 </head>
 <body>
@@ -146,6 +170,8 @@ button{user-select:none}
         <button class="nav-item" data-view="manuscript" onclick="navigate('manuscript')">📄 Manuscript <span class="nav-count" id="msCount"></span></button>
         <button class="nav-item" data-view="search" onclick="navigate('search')">🔍 Search</button>
         <button class="nav-item" data-view="reader" onclick="navigate('reader')">📖 Reader</button>
+        <button class="nav-item" data-view="map" onclick="navigate('map')">🕸 Map</button>
+        <button class="nav-item" data-view="compare" onclick="navigate('compare')">📈 Compare</button>
         <button class="nav-item" data-view="exports" onclick="navigate('exports')">⬇ Export</button>
         <button class="nav-item" data-view="settings" onclick="navigate('settings')">⚙ Settings</button>
       </nav>
@@ -183,7 +209,7 @@ function waitForApi(){return new Promise(function(r){if(apiReady)return r();wind
 async function call(method){await waitForApi();var args=[].slice.call(arguments,1);try{return await window.pywebview.api[method].apply(window.pywebview.api,args)}catch(e){console.error('API '+method+' failed:',e);throw new Error(e.message||String(e))}}
 async function load(){try{var s=await call('get_status');aiAvailable=!!s.llm_available;document.getElementById('statusText').textContent=s.llm||'Ready';document.getElementById('statusDot').style.color=s.ok?'var(--success)':'var(--danger)';document.getElementById('versionTag')&&(document.getElementById('versionTag').textContent='v'+(s.version||'10.0')+' · '+(aiAvailable?'AI on':'AI off'));var f=await call('list_files');DATA.files=f.files||[];var t=await call('get_tools');DATA.tools=t.tools||{};DATA.catalog=t.catalog||{};updateNavCounts();if(currentView)navigate(currentView)}catch(e){setStatus('Could not load: '+e.message)}}
 function updateNavCounts(){var i=DATA.files.filter(function(f){return['raw-dumps','triage'].includes(f.folder)}).length;var m=DATA.files.filter(function(f){return['chapters','drafts','final'].includes(f.folder)}).length;document.getElementById('inboxCount').textContent=i||'';document.getElementById('msCount').textContent=m||''}
-function navigate(v){currentView=v;document.querySelectorAll('.nav-item').forEach(function(b){b.classList.toggle('active',b.dataset.view===v)});var c=document.getElementById('content');c.className='content';if(v==='inbox')c.classList.add('zone-inbox');if(v==='manuscript')c.classList.add('zone-manuscript');if(v==='home')renderHome();if(v==='inbox')renderInbox();if(v==='manuscript')renderManuscript();if(v==='search')renderSearch();if(v==='reader')renderReader();if(v==='exports')renderExports();if(v==='settings')renderSettings()}
+function navigate(v){currentView=v;document.querySelectorAll('.nav-item').forEach(function(b){b.classList.toggle('active',b.dataset.view===v)});var c=document.getElementById('content');c.className='content';if(v==='inbox')c.classList.add('zone-inbox');if(v==='manuscript')c.classList.add('zone-manuscript');if(v==='home')renderHome();if(v==='inbox')renderInbox();if(v==='manuscript')renderManuscript();if(v==='search')renderSearch();if(v==='reader')renderReader();if(v==='map')renderMapView();if(v==='compare')renderCompareView();if(v==='exports')renderExports();if(v==='settings')renderSettings()}
 function setStatus(t){document.getElementById('statusText').textContent=t}
 function showToast(t,d){d=d||3000;var el=document.getElementById('toast');el.textContent=t;el.style.display='block';el.style.opacity='1';setTimeout(function(){el.style.opacity='0';setTimeout(function(){el.style.display='none'},300)},d)}
 function startTimer(title){operationCancelled=false;document.getElementById('thinkingOverlay').style.display='flex';document.getElementById('thinkingTitle').textContent=title||'Working…';document.getElementById('thinkingStep').textContent='';document.getElementById('thinkingTimer').textContent='00:00';document.getElementById('thinkingMessage').textContent=calmingMessages[0];timerStart=Date.now();var mi=0;timerInterval=setInterval(function(){var e=Math.floor((Date.now()-timerStart)/1000);var mm=String(Math.floor(e/60)).padStart(2,'0');var ss=String(e%60).padStart(2,'0');document.getElementById('thinkingTimer').textContent=mm+':'+ss},1000);messageInterval=setInterval(function(){mi=(mi+1)%calmingMessages.length;var el=document.getElementById('thinkingMessage');el.style.opacity='0';setTimeout(function(){el.textContent=calmingMessages[mi];el.style.opacity='1'},400)},8000)}
@@ -349,6 +375,196 @@ function readerClearHighlight(){
   setStatus('Highlight cleared');
 }
 function Path_basename(p){return p?p.split('/').pop().split('\\').pop():''}
+/* === Phase 15: Map view (relationship graph) === */
+async function renderMapView(){
+  var html='<div class="view active"><div class="view-header"><h1>🕸 Relationship Map</h1><p class="lead">Every character you\'ve tagged, with the relationships between them. Inferred edges (dashed) are co-occurrences; solid edges are LLM-extracted relationships.</p></div>';
+  document.getElementById('content').innerHTML=html+'<div class="card"><p class="muted">Loading map…</p></div></div>';
+  try{
+    var r=await call('get_relationship_map');
+    if(!r||!r.ok){document.getElementById('content').innerHTML=html+'<div class="card"><p class="muted">Could not load map: '+esc(r&&r.error||'unknown')+'</p></div></div>';return}
+    var m=r.map;
+    if(!m.node_count){
+      document.getElementById('content').innerHTML=html+'<div class="card"><p class="muted">No characters tagged yet. Tag some brain dumps in the Inbox first — characters will appear here automatically.</p></div></div>';
+      return
+    }
+    var stats='<div class="kv-grid"><div class="kv-item"><span class="kv-label">Characters</span><strong>'+m.node_count+'</strong></div><div class="kv-item"><span class="kv-label">Relationships</span><strong>'+m.edge_count+'</strong></div><div class="kv-item"><span class="kv-label">Files</span><strong>'+m.file_count+'</strong></div></div>';
+    var legend='<div class="map-legend"><div class="map-legend-item"><div class="map-legend-swatch" style="background:var(--ms-soft)"></div>Character (size = mentions)</div><div class="map-legend-item"><svg width="20" height="6"><line x1="0" y1="3" x2="20" y2="3" stroke="var(--muted)" stroke-width="1.5"/></svg>LLM relationship</div><div class="map-legend-item"><svg width="20" height="6"><line x1="0" y1="3" x2="20" y2="3" stroke="var(--muted)" stroke-width="1.5" stroke-dasharray="4 3"/></svg>Inferred co-occurrence</div></div>';
+    document.getElementById('content').innerHTML=html+'<div class="card">'+stats+'<div style="margin-top:16px"><svg class="map-svg" id="mapSvg" viewBox="0 0 800 520"></svg>'+legend+'</div></div><div class="card"><h3>Characters</h3><div id="mapCharList"></div></div></div>';
+    drawRelationshipMap(m);
+    renderMapCharList(m);
+    setStatus('Map: '+m.node_count+' characters, '+m.edge_count+' relationships')
+  }catch(e){document.getElementById('content').innerHTML=html+'<div class="card"><p class="muted">Error: '+esc(e.message)+'</p></div></div>'}
+}
+function drawRelationshipMap(m){
+  var svg=document.getElementById('mapSvg');
+  if(!svg)return;
+  var W=800,H=520,cx=W/2,cy=H/2;
+  var nodes=m.nodes||[];
+  var edges=m.edges||[];
+  // Position nodes in a circle, sorted by mention count (most mentioned at top)
+  var positions={};
+  if(nodes.length===1){
+    positions[nodes[0].id]={x:cx,y:cy}
+  }else{
+    var radius=Math.min(W,H)/2-80;
+    for(var i=0;i<nodes.length;i++){
+      var angle=(i/nodes.length)*2*Math.PI-Math.PI/2;
+      positions[nodes[i].id]={x:cx+radius*Math.cos(angle),y:cy+radius*Math.sin(angle)}
+    }
+  }
+  // Build node size from mention_count (min 14, max 32)
+  var maxMentions=Math.max(1,Math.max.apply(null,nodes.map(function(n){return n.mention_count||1})));
+  var svgHtml='';
+  // Draw edges first (so they're behind nodes)
+  edges.forEach(function(e){
+    var s=positions[e.source],t=positions[e.target];
+    if(!s||!t)return;
+    var midX=(s.x+t.x)/2,midY=(s.y+t.y)/2;
+    var dashClass=e.inferred?' inferred':'';
+    svgHtml+='<line class="map-edge-line'+dashClass+'" x1="'+s.x+'" y1="'+s.y+'" x2="'+t.x+'" y2="'+t.y+'" data-source="'+esc(e.source)+'" data-target="'+esc(e.target)+'" onmouseover="mapHighlight(\''+esc(e.source)+'\',\''+esc(e.target)+'\')" onmouseout="mapClearHighlight()"/>';
+    if(e.relation&&e.relation!=='co-occurs'&&e.relation!=='related'){
+      svgHtml+='<text class="map-edge-label" x="'+midX+'" y="'+(midY-4)+'">'+esc(e.relation)+'</text>'
+    }
+  });
+  // Draw nodes
+  nodes.forEach(function(n){
+    var p=positions[n.id];
+    if(!p)return;
+    var r=14+Math.round(18*((n.mention_count||1)/maxMentions));
+    svgHtml+='<circle class="map-node-circle" cx="'+p.x+'" cy="'+p.y+'" r="'+r+'" data-name="'+esc(n.id)+'" onmouseover="mapHighlight(\''+esc(n.id)+'\',null)" onmouseout="mapClearHighlight()" onclick="mapNodeClick(\''+esc(n.id)+'\')"/>';
+    svgHtml+='<text class="map-node-label" x="'+p.x+'" y="'+(p.y+r+16)+'">'+esc(n.name)+'</text>';
+    if(n.mention_count>1){
+      svgHtml+='<text class="map-edge-label" x="'+p.x+'" y="'+(p.y+4)+'" style="font-size:11px;font-weight:600">'+n.mention_count+'</text>'
+    }
+  });
+  svg.innerHTML=svgHtml
+}
+function mapHighlight(source,target){
+  document.querySelectorAll('.map-edge-line').forEach(function(line){
+    var ls=line.getAttribute('data-source'),lt=line.getAttribute('data-target');
+    if(ls===source||lt===source||(target&&(ls===target||lt===target))){
+      line.classList.add('highlighted')
+    }else{
+      line.classList.remove('highlighted')
+    }
+  });
+  document.querySelectorAll('.map-node-circle').forEach(function(c){
+    if(c.getAttribute('data-name')===source||(target&&c.getAttribute('data-name')===target)){
+      c.classList.add('highlighted')
+    }else{
+      c.classList.remove('highlighted')
+    }
+  })
+}
+function mapClearHighlight(){
+  document.querySelectorAll('.map-edge-line,.map-node-circle').forEach(function(el){el.classList.remove('highlighted')})
+}
+function mapNodeClick(name){
+  // Scroll the character list to the clicked node
+  var list=document.getElementById('mapCharList');
+  if(!list)return;
+  var items=list.querySelectorAll('[data-char-name]');
+  for(var i=0;i<items.length;i++){
+    if(items[i].getAttribute('data-char-name')===name){
+      items[i].scrollIntoView({behavior:'smooth',block:'center'});
+      items[i].style.background='var(--ms-soft)';
+      setTimeout(function(){items[i].style.background=''},2000);
+      break
+    }
+  }
+}
+function renderMapCharList(m){
+  var html=(m.nodes||[]).map(function(n){
+    var files=n.files||[];
+    return'<div class="filerow" data-char-name="'+esc(n.id)+'" style="cursor:pointer" onclick="mapNodeClick(\''+esc(n.id)+'\')"><div class="file-info"><div class="file-name">'+esc(n.name)+'</div><div class="file-meta">Mentioned '+n.mention_count+'x in '+files.length+' file(s)</div></div><span class="file-folder">'+files.slice(0,3).map(esc).join(', ')+(files.length>3?' +'+(files.length-3):'')+'</span></div>'
+  }).join('');
+  document.getElementById('mapCharList').innerHTML='<div class="filelist">'+html+'</div>'
+}
+/* === Phase 15: Compare view (emotional arc chart) === */
+function renderCompareView(){
+  var msFiles=DATA.files.filter(function(f){return['chapters','drafts','final'].includes(f.folder)});
+  var html='<div class="view active zone-manuscript"><div class="view-header"><h1>📈 Compare Emotional Arcs</h1><p class="lead">Pick 2 or more chapters to see their emotional valence curves overlaid. Each curve is downsampled to 50 points so chapters of different lengths can be compared.</p></div>';
+  if(msFiles.length<2){
+    html+='<div class="card"><p class="muted">You need at least 2 manuscript files to compare. Import chapters into the Manuscript section first.</p></div></div>';
+    document.getElementById('content').innerHTML=html;return
+  }
+  html+='<div class="card"><h3>Select chapters to compare</h3><div class="filelist" id="compareFileList">'+renderFileList(msFiles,'compare')+'</div><div class="actions" style="margin-top:12px"><button class="btn-primary" onclick="runCompareArcs()">Compare emotional arcs</button></div></div><div id="compareResults"></div></div>';
+  document.getElementById('content').innerHTML=html
+}
+async function runCompareArcs(){
+  var p=selected('compare');
+  if(!p||p.length<2)return showToast('Select at least 2 chapters to compare');
+  startTimer('Comparing emotional arcs of '+p.length+' chapter(s)');
+  var r=await call('compare_emotional_arcs',p);
+  stopTimer();
+  if(!r||!r.ok){showToast(r&&r.error||'Compare failed');return}
+  renderCompareResults(r.result)
+}
+function renderCompareResults(result){
+  var chapters=result.chapters||[];
+  var colors=['#C89B6B','#6B8E7F','#8FA4B0','#B07A6A','#7A9B7E','#D4A574','#4A6B5C','#8E6A42'];
+  var W=800,H=420,padL=50,padR=20,padT=20,padB=40;
+  var plotW=W-padL-padR,plotH=H-padT-padB;
+  var svgHtml='';
+  // Grid lines at -1, -0.5, 0, 0.5, 1
+  for(var v=-1;v<=1;v+=0.5){
+    var y=padT+(1-(v+1)/2)*plotH;
+    svgHtml+='<line class="compare-grid" x1="'+padL+'" y1="'+y+'" x2="'+(W-padR)+'" y2="'+y+'"/>';
+    svgHtml+='<text class="compare-axis-label" x="'+(padL-8)+'" y="'+(y+4)+'" text-anchor="end">'+(v>0?'+':'')+v.toFixed(1)+'</text>'
+  }
+  // Zero line (slightly darker)
+  var zeroY=padT+plotH/2;
+  svgHtml+='<line class="compare-zero-line" x1="'+padL+'" y1="'+zeroY+'" x2="'+(W-padR)+'" y2="'+zeroY+'"/>';
+  // X axis label
+  svgHtml+='<text class="compare-axis-label" x="'+(padL+plotW/2)+'" y="'+(H-8)+'" text-anchor="middle">Story progress (begin → end)</text>';
+  // Y axis label (rotated)
+  svgHtml+='<text class="compare-axis-label" x="14" y="'+(padT+plotH/2)+'" text-anchor="middle" transform="rotate(-90 14 '+(padT+plotH/2)+')">Emotional valence (− = sad, + = joyful)</text>';
+  // Draw each chapter's curve
+  var legendHtml='';
+  chapters.forEach(function(c,idx){
+    if(c.error){return}
+    var curve=c.curve||[];
+    var color=colors[idx%colors.length];
+    var pts=[];
+    for(var i=0;i<curve.length;i++){
+      var x=padL+(i/(curve.length-1))*plotW;
+      var y=padT+(1-(curve[i]+1)/2)*plotH;
+      pts.push(x+','+y)
+    }
+    svgHtml+='<polyline class="compare-curve" points="'+pts.join(' ')+'" stroke="'+color+'" data-chapter="'+esc(c.filename)+'"/>';
+    // Mark the turning point
+    if(c.turning_point&&c.turning_point.sentence_index){
+      var tpFrac=c.turning_point.fraction||0.5;
+      var tpX=padL+tpFrac*plotW;
+      var tpY=padT+(1-(c.turning_point.valence+1)/2)*plotH;
+      svgHtml+='<circle cx="'+tpX+'" cy="'+tpY+'" r="5" fill="'+color+'" stroke="#fff" stroke-width="2" opacity="0.9"/>';
+    }
+    legendHtml+='<div class="compare-legend-item"><div class="compare-legend-swatch" style="background:'+color+'"></div><strong>'+esc(c.filename)+'</strong> <span class="muted">— '+esc(c.arc.shape)+', avg '+(c.arc.average>=0?'+':'')+c.arc.average.toFixed(2)+', range '+c.arc.range.toFixed(2)+'</span></div>'
+  });
+  var svg='<svg class="compare-svg" viewBox="0 0 '+W+' '+H+'">'+svgHtml+'</svg>';
+  // Per-chapter summary table
+  var summary='<div class="card"><h3>Per-chapter summary</h3><div class="filelist">'+chapters.map(function(c,idx){
+    if(c.error)return'<div class="filerow"><div class="file-info"><div class="file-name">'+esc(c.filename)+'</div><div class="file-meta" style="color:var(--danger)">Error: '+esc(c.error)+'</div></div></div>';
+    var color=colors[idx%colors.length];
+    var shapeDesc=SHAPES_HELP[c.arc.shape]||c.arc.shape_description||'';
+    return'<div class="filerow"><div style="width:4px;background:'+color+';border-radius:2px;margin-right:8px"></div><div class="file-info"><div class="file-name">'+esc(c.filename)+'</div><div class="file-meta">'+c.word_count+' words · '+c.sentence_count+' sentences · shape: <strong>'+esc(c.arc.shape)+'</strong> · avg '+(c.arc.average>=0?'+':'')+c.arc.average.toFixed(2)+' · range '+c.arc.range.toFixed(2)+'</div>'+(shapeDesc?'<div class="muted" style="font-size:12px;margin-top:2px">'+esc(shapeDesc)+'</div>':'')+'</div><div class="file-folder">turn @ '+(Math.round((c.turning_point.fraction||0)*100))+'%</div></div>'
+  }).join('')+'</div></div>';
+  // Interpretation
+  var interp='<div class="card" style="background:var(--ms-soft);border:1px solid var(--ms-accent)"><h3>Interpretation</h3><p>'+esc(result.interpretation||'No interpretation available.')+'</p>'+(result.differences?'<div class="kv-grid" style="margin-top:12px"><div class="kv-item" style="background:rgba(255,255,255,0.6)"><span class="kv-label">Average valence spread</span><strong>'+result.differences.average_spread.toFixed(3)+'</strong></div><div class="kv-item" style="background:rgba(255,255,255,0.6)"><span class="kv-label">Shape agreement</span><strong>'+(result.differences.shape_agreement?'Yes':'No')+'</strong></div></div>':'')+'</div>';
+  document.getElementById('compareResults').innerHTML='<div class="card"><h3>Emotional arc overlay</h3>'+svg+'<div class="compare-legend">'+legendHtml+'</div></div>'+summary+interp;
+  setStatus('Compared '+chapters.length+' chapter(s)')
+}
+var SHAPES_HELP={
+  'rags_to_riches':'Begins low, ends high — a recovery or growth arc.',
+  'riches_to_rags':'Begins high, ends low — a fall or loss arc.',
+  'man_in_a_hole':'Begins high, falls, then recovers — a fall-and-redemption arc.',
+  'icarus':'Begins low, rises, then falls — a rise-and-fall arc.',
+  'cinderella':'Rises, falls, then rises again — partial recovery after a setback.',
+  'oedipus':'Falls, rises, then falls again — temporary recovery ending in loss.',
+  'flat':'Little valence movement — an emotionally steady chapter.',
+  'mixed':'No clear archetype — the arc has its own shape.',
+  'insufficient_data':'Too few sentences to classify the arc shape.'
+};
 </script>
 </body>
 </html>

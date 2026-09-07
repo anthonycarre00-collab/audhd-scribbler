@@ -34,6 +34,8 @@ from .search import (
 from .export import export_markdown, export_plain_text, export_docx, export_analysis_report, export_tag_index
 from . import settings as settings_module
 from .passage import build_index as build_passage_index
+from .relationship_map import build_map as build_relationship_map
+from .emotional_arc_comparison import compare_arcs as compare_emotional_arcs
 
 
 def _normalize_path(p):
@@ -468,6 +470,39 @@ class Api:
         self._push_progress(total, total, "Comparing chapters")
         try:
             result = chapter_comparison(chapters)
+            return {"ok": True, "result": _js_safe(result)}
+        except Exception as e:
+            return {"ok": False, "error": str(e)}
+
+    def get_relationship_map(self) -> dict:
+        """Build a relationship map from all tagged files.
+
+        Returns nodes (characters) and edges (relationships) for visualization.
+        If no LLM-extracted relationships exist, infers co-occurrence edges.
+        """
+        try:
+            result = build_relationship_map()
+            return {"ok": True, "map": _js_safe(result)}
+        except Exception as e:
+            return {"ok": False, "error": str(e)}
+
+    def compare_emotional_arcs(self, paths: list) -> dict:
+        """Compare the emotional arcs of 2+ chapters.
+
+        Returns per-chapter valence curves (downsampled for visualization),
+        arc shapes, turning points, and an interpretation of differences.
+        """
+        if not paths or len(paths) < 2:
+            return {"ok": False, "error": "Select at least 2 chapters to compare"}
+        total = len(paths)
+        for i, raw_path in enumerate(paths):
+            self._push_progress(i + 1, total, f"Analysing arc of {Path(raw_path).name}")
+        try:
+            python_paths = [str(_to_python_path(p)) for p in paths if _to_python_path(p)]
+            result = compare_emotional_arcs(python_paths)
+            self._push_progress(total, total, "Done")
+            if "error" in result:
+                return {"ok": False, "error": result["error"]}
             return {"ok": True, "result": _js_safe(result)}
         except Exception as e:
             return {"ok": False, "error": str(e)}
