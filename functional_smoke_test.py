@@ -54,7 +54,7 @@ def main():
     meta = tagger.tag_file(str(raw), use_llm=False)
     assert meta["word_count"] > 20
     assert meta["characters"] or meta["places"] or meta["themes"] or meta["sensory"]
-    assert meta["tagger_version"] == "4.1"
+    assert meta["tagger_version"] == "5.0"
 
     all_files = db.get_all_files()
     for key in webapp.TOOLS:
@@ -85,7 +85,7 @@ def main():
     assert raw.parent.name == "raw-dumps" and chapter.parent.name == "chapters"
     print("FUNCTIONAL SMOKE PASSED")
     print("- Inbox tag preview and deterministic tagging: PASS")
-    print("- All 17 analysis tools return meaningful structures: PASS")
+    print("- All v1 webapp analysis tools return meaningful structures: PASS (17 tools; new memory_truth + emotional_beats tested in phase14_test.py)")
     print("- All six deterministic suite tools provide advice: PASS")
     print("- Long-document deterministic path: PASS")
     print("- Release progress/export UI wiring: PASS")

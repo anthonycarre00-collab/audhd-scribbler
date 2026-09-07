@@ -109,7 +109,7 @@ def test_tagging():
         test("1.1b Short text detects Mom", "Mom" in meta.get("characters", []), f"chars: {meta.get('characters')}")
         test("1.1c Short text detects kitchen", "kitchen" in meta.get("places", []), f"places: {meta.get('places')}")
         test("1.1d Short text has voice tag", meta.get("voice") is not None, f"voice: {meta.get('voice')}")
-        test("1.1e Short text has tagger_version", meta.get("tagger_version") == "4.1", f"version: {meta.get('tagger_version')}")
+        test("1.1e Short text has tagger_version", meta.get("tagger_version") == "5.0", f"version: {meta.get('tagger_version')}")
     except Exception as e:
         test("1.1 Short text tags without crash", False, str(e))
     
@@ -832,7 +832,7 @@ def test_imports():
     
     try:
         from scribbler.analysis_catalog import ANALYSIS_CATALOG
-        test("10.5 Catalog has 17 tools", len(ANALYSIS_CATALOG) == 17, f"has {len(ANALYSIS_CATALOG)}")
+        test("10.5 Catalog has 19 tools", len(ANALYSIS_CATALOG) == 19, f"has {len(ANALYSIS_CATALOG)}")
     except Exception as e:
         test("10.5 Catalog imports", False, str(e))
     
