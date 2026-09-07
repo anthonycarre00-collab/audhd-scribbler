@@ -48,7 +48,11 @@ def _init_tables(conn: sqlite3.Connection):
         summary TEXT,
         dump_date TEXT,
         last_modified TEXT,
-        last_analyzed TEXT
+        last_analyzed TEXT,
+        relationships TEXT,
+        emotional_beats TEXT,
+        time_markers TEXT,
+        objects TEXT
     );
 
     CREATE TABLE IF NOT EXISTS analysis_results (
@@ -108,6 +112,14 @@ def _init_tables(conn: sqlite3.Connection):
     CREATE INDEX IF NOT EXISTS idx_occ_file ON tag_occurrences(file_path);
     CREATE INDEX IF NOT EXISTS idx_occ_tag  ON tag_occurrences(tag_type, tag_value);
     """)
+    # Phase 13: add new columns to existing files table (migration for old DBs)
+    try:
+        existing_cols = {row["name"] for row in conn.execute("PRAGMA table_info(files)").fetchall()}
+        for new_col in ("relationships", "emotional_beats", "time_markers", "objects"):
+            if new_col not in existing_cols:
+                conn.execute(f"ALTER TABLE files ADD COLUMN {new_col} TEXT")
+    except sqlite3.OperationalError:
+        pass  # column already exists or table doesn't exist yet
     # FTS5 virtual table — wrapped in try/except because some SQLite builds lack FTS5
     try:
         conn.execute("""
@@ -291,9 +303,9 @@ def upsert_file(meta: Dict[str, Any]):
     conn = get_db()
     db_meta = copy.deepcopy(meta)
     # Strip keys that aren't DB columns (prevents OperationalError)
-    valid_columns = {"path","filename","folder","word_count","status","chapter_no","characters","places","era","beats","themes","voice","sensory","continuity","emotional_register","motifs","research_claims","citations","comp_titles","strength_signal","summary","dump_date","last_modified","last_analyzed"}
+    valid_columns = {"path","filename","folder","word_count","status","chapter_no","characters","places","era","beats","themes","voice","sensory","continuity","emotional_register","motifs","research_claims","citations","comp_titles","strength_signal","summary","dump_date","last_modified","last_analyzed","relationships","emotional_beats","time_markers","objects"}
     db_meta = {k: v for k, v in db_meta.items() if k in valid_columns}
-    for key in ["characters", "places", "beats", "themes", "sensory", "continuity", "motifs"]:
+    for key in ["characters", "places", "beats", "themes", "sensory", "continuity", "motifs", "relationships", "emotional_beats", "time_markers", "objects"]:
         if key in db_meta and isinstance(db_meta[key], list):
             db_meta[key] = json.dumps(db_meta[key], ensure_ascii=False)
     db_meta["last_modified"] = datetime.now().isoformat()
@@ -311,12 +323,14 @@ def upsert_file(meta: Dict[str, Any]):
 
 def _decode_file_row(row):
     d = dict(row)
-    for key in ["characters", "places", "beats", "themes", "sensory", "continuity", "motifs"]:
+    for key in ["characters", "places", "beats", "themes", "sensory", "continuity", "motifs", "relationships", "emotional_beats", "time_markers", "objects"]:
         if d.get(key) and isinstance(d[key], str):
             try:
                 d[key] = json.loads(d[key])
             except json.JSONDecodeError:
                 d[key] = []
+        elif d.get(key) is None:
+            d[key] = []
     return d
 
 

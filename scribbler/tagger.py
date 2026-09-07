@@ -66,6 +66,7 @@ def _spacy_ner_chunked(text: str, nlp, entity_types: set, max_chars_per_chunk: i
 
 
 def detect_characters(text: str, nlp=None) -> List[str]:
+    from .config import STOPLIST_CHARACTERS
     characters = set()
     if nlp is None: nlp = _get_spacy()
     if nlp:
@@ -80,7 +81,109 @@ def detect_characters(text: str, nlp=None) -> List[str]:
     family_patterns = [r'\b(Mom|Mum|Mother|Dad|Father|Grandma|Grandpa|Grandmother|Grandfather|Nana|Papa|Sister|Brother|Aunt|Uncle|Cousin)\b']
     for pattern in family_patterns:
         characters.update(re.findall(pattern, text))
-    return sorted(characters)[:20]
+    # Phase 12: filter out stoplisted tokens that spaCy mis-tags as PERSON
+    filtered = set()
+    for c in characters:
+        cl = c.lower()
+        # Skip if the entire token is in the stoplist
+        if cl in STOPLIST_CHARACTERS:
+            continue
+        # Skip single-word entities that are common nouns
+        if " " not in c and cl in STOPLIST_CHARACTERS:
+            continue
+        # Skip if it looks like a sentence-start capitalization of a common word
+        if cl in {"the","and","but","when","after","before","during","while","then","because","although","however"}:
+            continue
+        # Apply classification — only keep if it plausibly looks like a person
+        if _classify_entity(c, "") == "person":
+            filtered.add(c)
+        else:
+            # If classification is uncertain, keep it (better to over-tag than miss)
+            filtered.add(c)
+    return sorted(filtered)[:20]
+
+
+def _classify_entity(name: str, context_sentence: str = "") -> str:
+    """Classify a capitalized token as 'person', 'place', or 'other' using context.
+
+    Uses the preceding verb/preposition to guess. Always-on rule-based
+    disambiguation — Phase 12.
+    """
+    if not name:
+        return "other"
+    nl = name.lower()
+    # Family roles are always persons
+    if nl in {"mom", "mum", "mother", "dad", "father", "grandma", "grandpa",
+              "grandmother", "grandfather", "nana", "papa", "sister", "brother",
+              "aunt", "uncle", "cousin", "parents"}:
+        return "person"
+    # Stoplisted common nouns
+    from .config import STOPLIST_CHARACTERS, THEME_AS_PLACE_STOP
+    if nl in STOPLIST_CHARACTERS:
+        return "other"
+    if nl in THEME_AS_PLACE_STOP:
+        return "other"
+    # If context_sentence contains verbs that take persons as objects, classify as person
+    if context_sentence:
+        # "said X", "X said", "X told", "X smiled", "X looked at"
+        if re.search(r'\b' + re.escape(name) + r'\b\s+(said|told|smiled|laughed|cried|nodded|looked|walked|sat|stood|gave|took|put|felt|knew|thought|remembered)\b', context_sentence, re.IGNORECASE):
+            return "person"
+        if re.search(r'\b(said|told|saw|heard|met|called|visited|remembered|missed|loved|hated)\s+' + re.escape(name) + r'\b', context_sentence, re.IGNORECASE):
+            return "person"
+        # "at X", "to X", "in X" with capitalized X — could be place
+        if re.search(r'\b(at|to|in|from|into|near|around|across)\s+' + re.escape(name) + r'\b', context_sentence, re.IGNORECASE):
+            # But "to Mom" is a person — only treat as place if not a family role
+            if nl not in {"mom", "mum", "mother", "dad", "father", "grandma", "grandpa"}:
+                return "place"
+    # Default: assume person (spaCy tagged it as PERSON)
+    return "person"
+
+
+def detect_time_markers(text: str) -> List[str]:
+    """Detect time markers like 'summer of 1994', 'the day after', 'two weeks ago'.
+
+    Phase 13: rule-based, always-on.
+    """
+    from .config import TIME_MARKER_PATTERNS
+    markers = set()
+    for pattern in TIME_MARKER_PATTERNS:
+        for m in re.finditer(pattern, text, re.IGNORECASE):
+            markers.add(m.group(0).strip())
+    return sorted(markers)[:20]
+
+
+def detect_objects(text: str, nlp=None) -> List[str]:
+    """Detect recurring physical objects (potential motifs).
+
+    Phase 13: uses spaCy NOUN entities + frequency count.
+    """
+    if nlp is None: nlp = _get_spacy()
+    if not nlp:
+        # Fallback: find capitalized nouns that appear 3+ times
+        words = re.findall(r'\b([a-z]{4,})\b', text)
+        from collections import Counter
+        counts = Counter(words)
+        # Filter out common words
+        stop = {"the","and","but","was","were","that","this","with","from","have","were","they","their","what","when","where","which","there","then","than","them","some","many","most","such","very","just","really","also","only","more","much","into","upon","about","after","before","because","although","however"}
+        candidates = [w for w, c in counts.items() if c >= 3 and w not in stop]
+        return candidates[:10]
+    # Use spaCy to find nouns, then count
+    try:
+        doc = nlp(text[:50000])  # cap at 50k chars
+        from collections import Counter
+        noun_counts = Counter()
+        for token in doc:
+            if token.pos_ == "NOUN" and len(token.text) >= 4 and token.text.lower() not in {
+                "time","year","day","week","month","moment","thing","something","everything",
+                "nothing","anything","someone","everyone","anyone","somewhere","anywhere",
+                "kitchen","room","house","home","school","work","life","world","hand","eye",
+                "eyes","face","head","voice","mind","heart","breath","door","table","window",
+            }:
+                noun_counts[token.text.lower()] += 1
+        # Return top nouns that appear 3+ times
+        return [n for n, c in noun_counts.most_common(15) if c >= 3][:10]
+    except Exception:
+        return []
 
 
 def detect_places(text: str, nlp=None) -> List[str]:
@@ -269,7 +372,21 @@ def llm_assisted_tagging(text: str) -> Optional[Dict]:
 def _llm_tag_single_chunk(text: str, chunk_num: int=1, total_chunks: int=1) -> Optional[Dict]:
     system="""You are a literary analysis assistant helping a writer organize raw brain dumps. Extract useful metadata, not judgments. Preserve uncertainty. Do not invent facts or themes unsupported by the text."""
     chunk_note=f" (chunk {chunk_num} of {total_chunks})" if total_chunks>1 else ""
-    prompt=f'''Read this text and extract JSON metadata{chunk_note}. Text:\n---\n{text}\n---\nReturn: {{"beats":["scene beats or units of change"],"themes":["3-5 supported themes"],"emotional_register":"dominant tone", "summary":"2-3 line plain-English summary", "strength_signal":"one supported strength signal"}}. Valid JSON only.'''
+    prompt=f'''Read this text and extract JSON metadata{chunk_note}. Text:\n---\n{text}\n---\nReturn JSON with these fields:
+{{
+  "beats": ["scene beats or units of change"],
+  "themes": ["3-5 supported themes"],
+  "emotional_register": "dominant tone",
+  "summary": "2-3 line plain-English summary",
+  "strength_signal": "one supported strength signal",
+  "persons": [{{"name": "Mom", "role": "family|friend|professional|self|other"}}],
+  "places": [{{"name": "kitchen", "type": "domestic|geographic|institutional|imagined"}}],
+  "objects": ["recurring physical items, e.g. blue coat, tea pot"],
+  "relationships": [{{"a": "Mom", "b": "Dad", "relation": "spouse|parent-child|rival|friend"}}],
+  "emotional_beats": [{{"quote": "I felt small", "intensity": 1-3}}],
+  "time_markers": ["summer of 1994", "the day after"]
+}}
+Valid JSON only. Only include fields you can support from the text.'''
     return llm.llm_json(prompt,system)
 
 
@@ -288,7 +405,21 @@ def tag_file(file_path: str, use_llm: bool=True) -> Dict:
     if text.startswith("---"):
         end=text.find("---",3);body_text=text[end+3:].strip() if end!=-1 else text
     else:body_text=text
-    nlp=_get_spacy();characters=detect_characters(body_text,nlp);places=detect_places(body_text,nlp);era=detect_era(body_text);rule_themes=detect_themes(body_text);themes=list(rule_themes);voice=detect_voice(body_text);sensory=detect_sensory(body_text);emotional_register=detect_emotional_register(body_text);anachronisms=detect_anachronisms(body_text)
+    nlp=_get_spacy()
+    characters=detect_characters(body_text,nlp)
+    places=detect_places(body_text,nlp)
+    era=detect_era(body_text)
+    rule_themes=detect_themes(body_text)
+    themes=list(rule_themes)
+    voice=detect_voice(body_text)
+    sensory=detect_sensory(body_text)
+    emotional_register=detect_emotional_register(body_text)
+    anachronisms=detect_anachronisms(body_text)
+    # Phase 13: new tag types (rule-based, always on)
+    time_markers=detect_time_markers(body_text)
+    objects=detect_objects(body_text,nlp)
+    relationships=[]
+    emotional_beats=[]
     beats=[];summary="";strength_signal=None
     if use_llm and llm.llm_available():
         llm_result=llm_assisted_tagging(body_text)
@@ -301,6 +432,51 @@ def tag_file(file_path: str, use_llm: bool=True) -> Dict:
             themes=themes[:10]
             if not emotional_register:emotional_register=llm_result.get("emotional_register")
             summary=llm_result.get("summary","");strength_signal=llm_result.get("strength_signal")
+            # Phase 12: merge LLM-typed entities with rule-based output
+            llm_persons=llm_result.get("persons",[])
+            llm_places=llm_result.get("places",[])
+            llm_objects=llm_result.get("objects",[])
+            llm_relationships=llm_result.get("relationships",[])
+            llm_emotional_beats=llm_result.get("emotional_beats",[])
+            llm_time_markers=llm_result.get("time_markers",[])
+            # Merge persons (dedupe by lowercased name; prefer LLM-typed)
+            char_lower={c.lower() for c in characters}
+            for p in llm_persons:
+                if isinstance(p,dict):
+                    name=p.get("name","").strip()
+                    if name and name.lower() not in char_lower:
+                        characters.append(name)
+                        char_lower.add(name.lower())
+                elif isinstance(p,str) and p.lower() not in char_lower:
+                    characters.append(p)
+                    char_lower.add(p.lower())
+            # Merge places
+            place_lower={p.lower() for p in places}
+            for p in llm_places:
+                if isinstance(p,dict):
+                    name=p.get("name","").strip()
+                    if name and name.lower() not in place_lower:
+                        places.append(name)
+                        place_lower.add(name.lower())
+                elif isinstance(p,str) and p.lower() not in place_lower:
+                    places.append(p)
+                    place_lower.add(p.lower())
+            # Merge objects
+            obj_lower={o.lower() for o in objects}
+            for o in llm_objects:
+                if isinstance(o,str) and o.lower() not in obj_lower:
+                    objects.append(o)
+                    obj_lower.add(o.lower())
+            # Relationships and emotional_beats come only from LLM (no rule-based equivalent)
+            relationships=llm_relationships if isinstance(llm_relationships,list) else []
+            emotional_beats=llm_emotional_beats if isinstance(llm_emotional_beats,list) else []
+            # Merge time markers
+            tm_lower={t.lower() for t in time_markers}
+            for t in llm_time_markers:
+                if isinstance(t,str) and t.lower() not in tm_lower:
+                    time_markers.append(t)
+                    tm_lower.add(t.lower())
+    characters=characters[:20];places=places[:15]
     # Determine folder — handle paths outside PROJECT_ROOT gracefully (smoke tests, temp dirs)
     try:
         rel_path=path.resolve().relative_to(PROJECT_ROOT.resolve())
@@ -314,7 +490,9 @@ def tag_file(file_path: str, use_llm: bool=True) -> Dict:
     status_map={"raw-dumps":"seedling","triage":"growing","chapters":"growing","drafts":"shaping","final":"polishing","archive":"resting"};status=status_map.get(folder,"seedling")
     chapter_no=None;ch_match=re.match(r'ch-?(\d+)',path.stem,re.I)
     if ch_match:chapter_no=int(ch_match.group(1))
-    meta={"path":str(path.resolve()),"filename":path.name,"folder":folder,"word_count":word_count,"status":status,"chapter_no":chapter_no,"characters":characters,"places":places,"era":era,"beats":beats,"themes":themes,"voice":voice,"sensory":sensory,"continuity":[],"emotional_register":emotional_register,"motifs":[],"summary":summary,"strength_signal":1 if strength_signal else 0,"tagger_version":"4.1","anachronisms":anachronisms}
+    meta={"path":str(path.resolve()),"filename":path.name,"folder":folder,"word_count":word_count,"status":status,"chapter_no":chapter_no,"characters":characters,"places":places,"era":era,"beats":beats,"themes":themes,"voice":voice,"sensory":sensory,"continuity":[],"emotional_register":emotional_register,"motifs":[],"summary":summary,"strength_signal":1 if strength_signal else 0,"tagger_version":"5.0","anachronisms":anachronisms,
+          # Phase 13: new tag types
+          "relationships":relationships,"emotional_beats":emotional_beats,"time_markers":time_markers,"objects":objects}
     # Save to database so search/stats/coverage actually work (db.upsert_file filters non-DB keys)
     try:
         from . import db
@@ -345,7 +523,22 @@ def _index_tag_occurrences(file_path: str, body_text: str, meta: dict):
         ("themes",     meta.get("themes", [])),
         ("sensory",    meta.get("sensory", [])),
         ("beats",      meta.get("beats", [])),
+        # Phase 13: new tag types
+        ("time_markers", meta.get("time_markers", [])),
+        ("objects",      meta.get("objects", [])),
     ]
+    # Emotional beats are dicts with quote + intensity — index by quote
+    for eb in meta.get("emotional_beats", []):
+        if isinstance(eb, dict) and eb.get("quote"):
+            matches = find_paragraphs_containing(idx, eb["quote"][:50], case_sensitive=False)
+            for m in matches:
+                db.add_tag_occurrence(
+                    file_path=file_path, tag_type="emotional_beats", tag_value=eb["quote"][:80],
+                    paragraph=m["paragraph"],
+                    char_start=m.get("char_offsets_in_paragraph", [0])[0],
+                    char_end=m.get("char_offsets_in_paragraph", [0])[0] + len(eb["quote"][:50]),
+                    snippet=m.get("snippet", ""),
+                )
     for tag_type, values in tag_buckets:
         if not values:
             continue

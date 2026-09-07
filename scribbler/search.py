@@ -38,11 +38,18 @@ def get_all_values_for_tag(tag_type: str) -> List[Dict]:
     value_files = defaultdict(list)  # value -> list of filenames
 
     for f in all_files:
-        if tag_type in ["characters", "places", "themes", "sensory", "continuity", "motifs"]:
+        if tag_type in ["characters", "places", "themes", "sensory", "continuity", "motifs",
+                        "relationships", "emotional_beats", "time_markers", "objects"]:
             values = f.get(tag_type) or []
             for v in values:
-                value_counts[v] += 1
-                value_files[v].append(f.get("filename", ""))
+                # Handle dict-shaped values (emotional_beats, relationships)
+                if isinstance(v, dict):
+                    val_str = v.get("name") or v.get("quote") or v.get("a") or str(v)
+                    value_counts[val_str] += 1
+                    value_files[val_str].append(f.get("filename", ""))
+                else:
+                    value_counts[v] += 1
+                    value_files[v].append(f.get("filename", ""))
         else:
             # Single-value tags (era, emotional_register, voice, status)
             val = f.get(tag_type)

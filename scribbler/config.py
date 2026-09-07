@@ -79,6 +79,31 @@ FILTER_WORDS = [
     "saw", "heard", "felt", "noticed", "realized", "knew", "thought", "wondered", "looked", "watched",
     "seemed", "appeared", "decided", "remembered", "recognized", "touched", "smelled",
 ]
+# Phase 12: Stopwords to prevent common words being tagged as PERSON entities by spaCy
+STOPLIST_CHARACTERS = {
+    # Themes that look person-y but aren't
+    "masking", "burnout", "meltdown", "shutdown", "stimming", "hyperfocus", "hyperfixation",
+    "diagnosis", "diagnosed", "evaluated", "alexithymia", "monotropism", "rsd",
+    # Common nouns spaCy sometimes mis-tags
+    "moments", "memories", "years", "days", "weeks", "months", "morning", "evening", "night",
+    "kitchen", "bedroom", "porch", "backyard", "school", "house", "home", "room",
+    # Generic words capitalized at sentence start
+    "the", "and", "but", "when", "after", "before", "during", "while", "then",
+}
+# Phase 12: Themes that look place-y but aren't
+THEME_AS_PLACE_STOP = {
+    "burnout", "meltdown", "shutdown", "recovery", "hyperfocus", "depression",
+    "anxiety", "overload", "childhood", "adolescence",
+}
+# Phase 13: Regex patterns for time markers
+TIME_MARKER_PATTERNS = [
+    r'\b(summer|winter|spring|fall|autumn)\s+of\s+\d{4}\b',
+    r'\b(in|of|the)\s+(year\s+)?\d{4}\b',
+    r'\b(the\s+)?(day|week|month|year)\s+(after|before|of)\b',
+    r'\b(two|three|four|five|six|seven|eight|nine|ten|\d+)\s+(days|weeks|months|years)\s+(ago|later|before|after)\b',
+    r'\b(last|next|this)\s+(week|month|year|summer|winter|spring|fall|autumn)\b',
+    r'\b(in|of)\s+(january|february|march|april|may|june|july|august|september|october|november|december)\b',
+]
 ANACHRONISM_WATCHLIST = {
     "technology": ["smartphone", "iphone", "android", "facebook", "instagram", "whatsapp", "twitter", "tiktok", "google"],
     "media": ["streaming", "netflix", "spotify", "podcast"],
