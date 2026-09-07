@@ -17,6 +17,8 @@ ANALYSIS_CATALOG={
 "anchors":{"title":"Structural Anchors","stage":"draft","group":"Structure","purpose":"Recurring openings, endings and textual anchors."},
 "voice_dna":{"title":"Voice DNA","stage":"draft","group":"Writer","purpose":"Compare selected writing against approved personal writing samples."},
 "reader_perception":{"title":"Reader Perception","stage":"draft","group":"Writer","purpose":"Evidence-first impression of narrator/author and named characters when AI is configured."},
+"memory_truth":{"title":"Memory & Truth","stage":"near-final","group":"Memoir","purpose":"Detects memory-uncertainty language, absolute claims, and unverifiable attributions to others' minds."},
+"emotional_beats":{"title":"Emotional Beats","stage":"draft","group":"Memoir","purpose":"Locates named vs shown emotions, finds emotional turns, flags scenes with neither."},
 }
 
 def recommended(stage="draft"):

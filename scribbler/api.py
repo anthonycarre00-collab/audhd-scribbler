@@ -21,7 +21,8 @@ from .file_io import read_text_file, write_text_file
 from .analysis_catalog import ANALYSIS_CATALOG
 from .analyzers import (
     craft, voice_tense, characters, continuity, themes, editor,
-    cadence, motifs, anchors, voice_dna, reader_perception
+    cadence, motifs, anchors, voice_dna, reader_perception,
+    memory_truth, emotional_beats
 )
 from .analysis_suite import run as suite_run
 from .writer_intelligence import chapter_comparison
@@ -744,6 +745,9 @@ def _get_tools_dict():
         "anchors": ("Structural Anchors", "Structure", "Recurring openings, endings and anchors.", None),
         "voice_dna": ("Voice DNA", "Writer", "Compare against approved personal writing samples.", voice_dna.analyze),
         "reader_perception": ("Reader Perception", "Writer", "Evidence-first impression of narrator and characters.", reader_perception.analyze),
+        # Phase 14: two new memoir-specific tools
+        "memory_truth": ("Memory & Truth", "Memoir", "Memory-uncertainty language, absolute claims, other-mind attributions.", memory_truth.analyze),
+        "emotional_beats": ("Emotional Beats", "Memoir", "Named vs shown emotions, emotional turns, flat scenes.", emotional_beats.analyze),
     }
 
 
