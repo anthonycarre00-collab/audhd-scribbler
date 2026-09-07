@@ -82,3 +82,30 @@ Stage Summary:
 - UI additions: Reader view (sidebar), free-text search input, analysis export cards, tag index export cards, 📚 History button, editable tag chips, synthesis card with top things to notice
 - Analysis tools now produce structured loc, evidence_quote, why_it_matters on observations — every observation is click-to-jump to the reader
 - Push to GitHub pending — credentials not in this session's environment
+
+---
+Task ID: v10-build-delivery
+Agent: Super Z (main)
+Task: Push v10 to GitHub, fully test, and deliver the Windows build.
+
+Work Log:
+- Pushed all 16 v10 commits to GitHub (origin/main)
+- Ran all 10 phase test scripts — all PASS
+- Ran final end-to-end test — all 14 phases verified together
+- Ran comprehensive_test.py — 240/240 PASS (fixed 2 stale assertions: 17→19 tools, 4.1→5.0 version)
+- Ran pre_build_verification.py — 41/41 PASS (empty file, short file, special chars, YAML frontmatter, 88k-word manuscript, memory check, all 28 API methods, DB integrity)
+- Long manuscript performance: 88k words tagged in 10.7s, analyzed in 10.4s, body fetched in 0.03s, search in 0.00s
+- Memory: 751MB peak (includes spaCy en_core_web_sm model — acceptable for desktop)
+- First GitHub Actions run failed: functional_smoke_test.py had stale `tagger_version == "4.1"` assertion
+- Fixed the assertion to expect "5.0" (bumped in Phase 13)
+- Pushed fix — triggered new GitHub Actions run
+- Windows package build completed successfully (all 14 steps ✓)
+- Two artifacts produced:
+  - Audhd-Scribbler-Installer (53.3 MB) — Inno Setup installer
+  - Audhd-Scribbler-Portable (76.1 MB) — portable .exe folder
+
+Stage Summary:
+- v10 is fully delivered and built
+- Run URL: https://github.com/anthonycarre00-collab/audhd-scribbler/actions/runs/34160369402
+- Artifacts available for download from the run page
+- All tests green: 240 comprehensive + 41 pre-build + 10 phase + 2 smoke = 293 tests passing
