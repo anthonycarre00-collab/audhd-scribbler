@@ -20,6 +20,78 @@
   --font-heading:'Source Serif 4',Georgia,serif;
   --font-mono:'JetBrains Mono',Consolas,monospace;
 }
+/* === V12 DARK THEME (default for writing app) === */
+body.theme-dark, body.theme-dark #app {
+  --paper:#1A1816; --panel:#242120; --ink:#E8E2D6; --muted:#8A8278;
+  --line:#3A3530; --soft:#2E2A26;
+  --inbox-accent:#8FB4A4; --inbox-soft:#2A3833; --inbox-deep:#A8C4B8;
+  --ms-accent:#D4A574; --ms-soft:#3A2E22; --ms-deep:#E8B888;
+  --success:#8FB4A4; --warning:#D4A574; --info:#8FA4B0; --danger:#C49084;
+  --shadow:0 1px 3px rgba(0,0,0,0.3),0 1px 2px rgba(0,0,0,0.2);
+  --shadow-lg:0 4px 12px rgba(0,0,0,0.4),0 2px 4px rgba(0,0,0,0.3);
+}
+body.theme-dark{background:var(--paper);color:var(--ink)}
+body.theme-dark .topbar{background:var(--panel);border-bottom-color:var(--line)}
+body.theme-dark .sidebar{background:var(--soft);border-right-color:var(--line)}
+body.theme-dark .nav-item{color:var(--ink)}
+body.theme-dark .nav-item:hover{background:var(--line)}
+body.theme-dark .nav-item.active{background:var(--ms-soft);color:var(--ms-deep)}
+body.theme-dark .card{background:var(--panel);border-color:var(--line)}
+body.theme-dark .filerow{border-bottom-color:var(--line)}
+body.theme-dark .filerow .file-meta{color:var(--muted)}
+body.theme-dark .dropzone{border-color:var(--line)}
+body.theme-dark .dropzone:hover{background:var(--soft);border-color:var(--muted)}
+body.theme-dark .btn{background:var(--panel);border-color:var(--line);color:var(--ink)}
+body.theme-dark .btn-primary{background:var(--ms-accent);border-color:var(--ms-accent);color:#1A1816}
+body.theme-dark .btn-secondary{border-color:var(--ms-accent);color:var(--ms-deep)}
+body.theme-dark .btn-ghost{color:var(--muted)}
+body.theme-dark .btn-ghost:hover{color:var(--ink)}
+body.theme-dark .finding{background:var(--soft)}
+body.theme-dark .notice{background:var(--soft)}
+body.theme-dark .kv-item{background:var(--paper)}
+body.theme-dark .json-viewer{background:#0D0C0B;color:#d4d0c8}
+body.theme-dark .reader-para:hover{background:var(--soft)}
+body.theme-dark .reader-para.para-highlight{background:var(--ms-soft)}
+body.theme-dark .reader-para.para-has-match{background:rgba(212,165,116,0.10)}
+body.theme-dark .para-text mark{background:rgba(212,165,116,0.30)}
+body.theme-dark select, body.theme-dark input[type=text], body.theme-dark textarea{background:var(--panel);color:var(--ink);border-color:var(--line)}
+body.theme-dark .map-edge-line{stroke:#5A544A}
+body.theme-dark .compare-grid{stroke:#3A3530}
+body.theme-dark .tool-card{background:var(--panel);border-color:var(--line)}
+body.theme-dark .tool-card.selected{background:var(--ms-soft);border-color:var(--ms-accent)}
+/* === V12 PROJECT PICKER + EDITOR === */
+.project-overlay{position:fixed;inset:0;background:var(--paper);z-index:600;display:flex;align-items:center;justify-content:center}
+.project-picker{background:var(--panel);border:1px solid var(--line);border-radius:var(--r-lg);padding:var(--sp-2xl);max-width:560px;width:90%;box-shadow:var(--shadow-lg)}
+.project-picker h2{margin-bottom:var(--sp-md);font-size:26px}
+.project-picker .project-list{margin:var(--sp-lg) 0;max-height:300px;overflow-y:auto}
+.project-picker .project-row{display:flex;justify-content:space-between;align-items:center;padding:var(--sp-md);border:1px solid var(--line);border-radius:var(--r-md);margin-bottom:var(--sp-sm);cursor:pointer;transition:border-color 0.15s}
+.project-picker .project-row:hover{border-color:var(--ms-accent);background:var(--ms-soft)}
+.v12-editor-wrap{display:none;flex:1;flex-direction:column;overflow:hidden}
+.v12-editor-toolbar{display:flex;gap:4px;align-items:center;padding:6px var(--sp-md);border-bottom:1px solid var(--line);background:var(--panel);flex-shrink:0}
+.v12-editor-toolbar button{padding:6px 10px;border:1px solid transparent;background:transparent;color:var(--ink);border-radius:var(--r-sm);cursor:pointer;font-size:14px;font-family:var(--font-body)}
+.v12-editor-toolbar button:hover{background:var(--soft);border-color:var(--line)}
+.v12-editor-toolbar .sep{width:1px;height:20px;background:var(--line);margin:0 4px}
+.v12-editor-status{display:flex;justify-content:space-between;align-items:center;padding:4px var(--sp-md);border-top:1px solid var(--line);background:var(--panel);font-size:12px;color:var(--muted);flex-shrink:0}
+.v12-textarea{flex:1;width:100%;border:none;outline:none;padding:var(--sp-xl) var(--sp-2xl);font-family:var(--font-heading);font-size:18px;line-height:1.8;color:var(--ink);background:var(--paper);resize:none;tab-size:4}
+.v12-textarea:focus{outline:none}
+.v12-context-panel{width:280px;border-left:1px solid var(--line);background:var(--panel);padding:var(--sp-md);overflow-y:auto;flex-shrink:0;display:none}
+.v12-context-panel.visible{display:block}
+.v12-context-panel h4{font-size:13px;text-transform:uppercase;letter-spacing:0.05em;color:var(--muted);margin-bottom:var(--sp-sm);margin-top:var(--sp-md)}
+.v12-context-panel h4:first-child{margin-top:0}
+.v12-context-item{padding:6px 10px;border-radius:var(--r-sm);cursor:pointer;font-size:14px;margin-bottom:2px}
+.v12-context-item:hover{background:var(--soft)}
+.v12-tree{font-size:14px;user-select:none}
+.v12-tree-node{padding:4px 8px;cursor:pointer;border-radius:var(--r-sm);display:flex;align-items:center;gap:6px}
+.v12-tree-node:hover{background:var(--soft)}
+.v12-tree-node.active{background:var(--ms-soft);color:var(--ms-deep)}
+.v12-tree-node .tree-icon{width:18px;text-align:center;flex-shrink:0}
+.v12-tree-children{margin-left:16px}
+.v12-tree-node .tree-actions{margin-left:auto;display:none;gap:4px}
+.v12-tree-node:hover .tree-actions{display:flex}
+.v12-tree-node .tree-actions button{padding:2px 6px;font-size:11px;border:1px solid var(--line);background:var(--panel);color:var(--muted);border-radius:3px;cursor:pointer}
+.v12-tree-node .tree-actions button:hover{color:var(--ink);border-color:var(--muted)}
+body.focus-mode .sidebar,body.focus-mode .v12-context-panel,body.focus-mode .v12-editor-toolbar{display:none}
+body.focus-mode .v12-textarea{max-width:760px;margin:0 auto}
 /* === BASE === */
 *{box-sizing:border-box;margin:0;padding:0}
 body{font-family:var(--font-body);font-size:16px;line-height:1.6;color:var(--ink);background:var(--paper);-webkit-font-smoothing:antialiased}
@@ -152,11 +224,31 @@ button{user-select:none}
 .compare-legend-swatch{width:18px;height:3px;border-radius:2px}
 </style>
 </head>
-<body>
+<body class="theme-dark">
+<!-- V12: Project picker overlay (shown on first load) -->
+<div class="project-overlay" id="projectOverlay" style="display:none">
+  <div class="project-picker">
+    <h2>✎ Audhd Scribbler</h2>
+    <p class="muted">Pick up where you left off, or start a new project.</p>
+    <div class="project-list" id="projectList"></div>
+    <div class="actions">
+      <button class="btn-primary" onclick="showNewProjectForm()">+ New Project</button>
+      <button class="btn-secondary" onclick="pickProjectFolder()">📂 Open Folder…</button>
+    </div>
+    <div id="newProjectForm" style="display:none;margin-top:16px">
+      <input type="text" id="newProjectName" class="note-title-input" placeholder="Project name (e.g. My Memoir)" onkeydown="if(event.key==='Enter')createNewProject()">
+      <button class="btn-primary" onclick="createNewProject()" style="margin-top:8px">Create</button>
+    </div>
+    <div style="margin-top:16px;font-size:13px">
+      <a href="#" onclick="enterLegacyMode();return false" style="color:var(--muted)">Use legacy mode (v10/v11)</a>
+    </div>
+  </div>
+</div>
 <div id="app">
   <header class="topbar">
     <div class="brand">✎ Audhd Scribbler</div>
     <div class="header-actions">
+      <button class="btn-ghost" onclick="toggleTheme()" title="Toggle theme">◐</button>
       <button class="btn-ghost" onclick="openQuickNote()">✎ Quick Note</button>
       <span class="status-dot" id="statusDot">●</span>
       <span class="status-text" id="statusText">Ready</span>
@@ -178,6 +270,32 @@ button{user-select:none}
       <div class="sidebar-footer"><span id="versionTag">v10.0 · local</span></div>
     </aside>
     <main class="content" id="content"></main>
+    <!-- V12: Editor pane (shown when a chapter is open) -->
+    <div class="v12-editor-wrap" id="v12EditorWrap">
+      <div class="v12-editor-toolbar">
+        <button onclick="v12Format('bold')" title="Bold (Ctrl+B)"><b>B</b></button>
+        <button onclick="v12Format('italic')" title="Italic (Ctrl+I)"><i>I</i></button>
+        <button onclick="v12Format('heading')" title="Heading">H</button>
+        <button onclick="v12Format('quote')" title="Block quote">❝</button>
+        <span class="sep"></span>
+        <button onclick="v12Undo()" title="Undo (Ctrl+Z)">↶</button>
+        <button onclick="v12Redo()" title="Redo (Ctrl+Y)">↷</button>
+        <span class="sep"></span>
+        <button onclick="v12Find()" title="Find (Ctrl+F)">🔍</button>
+        <span class="sep"></span>
+        <button onclick="v12ToggleFocus()" title="Focus mode (Ctrl+E)" id="v12FocusBtn">🎯</button>
+        <button onclick="v12ToggleContext()" title="Toggle context panel" id="v12ContextBtn">📊</button>
+      </div>
+      <textarea class="v12-textarea" id="v12Textarea" placeholder="Start writing…" oninput="v12OnInput()" onkeydown="v12OnKeydown(event)"></textarea>
+      <div class="v12-editor-status">
+        <span id="v12StatusLeft">Ready</span>
+        <span id="v12StatusRight">0 words</span>
+      </div>
+    </div>
+    <!-- V12: Context panel (right rail) -->
+    <aside class="v12-context-panel" id="v12ContextPanel">
+      <div id="v12ContextContent"><p class="muted" style="font-size:13px">Context panel — characters, places, and themes in the current passage will appear here.</p></div>
+    </aside>
   </div>
 </div>
 <div class="thinking-overlay" id="thinkingOverlay" style="display:none">
@@ -207,7 +325,39 @@ var apiReady=false;
 window.addEventListener('pywebviewready',function(){apiReady=true;load()});
 function waitForApi(){return new Promise(function(r){if(apiReady)return r();window.addEventListener('pywebviewready',function(){r()})})}
 async function call(method){await waitForApi();var args=[].slice.call(arguments,1);try{return await window.pywebview.api[method].apply(window.pywebview.api,args)}catch(e){console.error('API '+method+' failed:',e);throw new Error(e.message||String(e))}}
-async function load(){try{var s=await call('get_status');aiAvailable=!!s.llm_available;document.getElementById('statusText').textContent=s.llm||'Ready';document.getElementById('statusDot').style.color=s.ok?'var(--success)':'var(--danger)';document.getElementById('versionTag')&&(document.getElementById('versionTag').textContent='v'+(s.version||'10.0')+' · '+(aiAvailable?'AI on':'AI off'));var f=await call('list_files');DATA.files=f.files||[];var t=await call('get_tools');DATA.tools=t.tools||{};DATA.catalog=t.catalog||{};updateNavCounts();if(currentView)navigate(currentView)}catch(e){setStatus('Could not load: '+e.message)}}
+async function load(){try{var s=await call('get_status');aiAvailable=!!s.llm_available;document.getElementById('statusText').textContent=s.llm||'Ready';document.getElementById('statusDot').style.color=s.ok?'var(--success)':'var(--danger)';document.getElementById('versionTag')&&(document.getElementById('versionTag').textContent='v'+(s.version||'12.0')+' · '+(aiAvailable?'AI on':'AI off'));var f=await call('list_files');DATA.files=f.files||[];var t=await call('get_tools');DATA.tools=t.tools||{};DATA.catalog=t.catalog||{};updateNavCounts();
+/* V12: Check for active project, show project picker if none */
+try{var pi=await call('get_active_project_info');if(pi&&pi.ok){DATA.project=pi.info;applyTheme(pi.info.theme||'dark');await v12LoadManuscriptTree()}else{showProjectPicker()}}catch(e){showProjectPicker()}
+if(currentView)navigate(currentView)}catch(e){setStatus('Could not load: '+e.message)}}
+function applyTheme(theme){document.body.className='theme-'+(theme||'dark');if(DATA.project)call('set_project_theme',theme)}
+function toggleTheme(){var current=document.body.classList.contains('theme-dark')?'dark':'light';var next=current==='dark'?'light':'dark';applyTheme(next);showToast('Theme: '+next)}
+function showProjectPicker(){document.getElementById('projectOverlay').style.display='flex';call('list_recent_projects').then(function(r){if(r&&r.ok){var list=document.getElementById('projectList');var recent=r.recent||[];if(!recent.length){list.innerHTML='<p class="muted">No recent projects yet.</p>';return}list.innerHTML=recent.map(function(p){return'<div class="project-row" onclick="openProject(\''+esc(p.path)+'\')"><div><strong>'+esc(p.name)+'</strong><div class="muted" style="font-size:12px">'+esc(p.path)+'</div></div><span class="file-folder">open →</span></div>'}).join('')}})}
+function showNewProjectForm(){document.getElementById('newProjectForm').style.display='block';document.getElementById('newProjectName').focus()}
+async function createNewProject(){var name=document.getElementById('newProjectName').value.trim();if(!name)return showToast('Enter a project name');var r=await call('create_project',name);if(r&&r.ok){document.getElementById('projectOverlay').style.display='none';DATA.project={name:r.name,folder_path:r.path};applyTheme('dark');await v12LoadManuscriptTree();showToast('Project created: '+r.name);navigate('home')}else showToast(r&&r.error||'Could not create project')}
+async function openProject(path){var r=await call('open_project',path);if(r&&r.ok){document.getElementById('projectOverlay').style.display='none';DATA.project=r.info;applyTheme(r.info.theme||'dark');await v12LoadManuscriptTree();showToast('Opened: '+r.name);navigate('home')}else showToast(r&&r.error||'Could not open project')}
+async function pickProjectFolder(){try{var r=await call('pick_open_files');/* reuse file dialog but we want a folder — use a different approach */showToast('Pick a project folder containing project.scribbler');/* For now, rely on recent projects list */}catch(e){showToast('Cancelled')}}
+function enterLegacyMode(){document.getElementById('projectOverlay').style.display='none';navigate('home')}
+/* === V12: MANUSCRIPT TREE === */
+var v12CurrentChapter=null,v12AutosaveTimer=null,v12UndoStack=[],v12RedoStack=[];
+async function v12LoadManuscriptTree(){try{var r=await call('get_manuscript_tree');if(r&&r.ok){DATA.manuscriptTree=r.tree;v12RenderTree()}}catch(e){console.error('tree load failed',e)}}
+function v12RenderTree(){var tree=DATA.manuscriptTree;if(!tree){return}var html='';if(tree.type==='empty'){html='<div class="empty" style="padding:16px;font-size:13px">No chapters yet.<br><button class="btn-secondary btn-sm" onclick="v12NewChapter()" style="margin-top:8px">+ New Chapter</button></div>'}else{html=v12RenderTreeNode(tree,0)}var treeEl=document.querySelector('.sidebar nav');/* Inject tree above nav */var existing=document.getElementById('v12TreeContainer');if(!existing){existing=document.createElement('div');existing.id='v12TreeContainer';existing.className='v12-tree';existing.style.cssText='padding:0 8px 16px;border-bottom:1px solid var(--line);margin-bottom:8px;max-height:40vh;overflow-y:auto';treeEl.parentNode.insertBefore(existing,treeEl)}existing.innerHTML='<div style="font-size:11px;text-transform:uppercase;letter-spacing:0.05em;color:var(--muted);padding:8px 8px 4px">Manuscript</div>'+html+'<button class="btn-ghost btn-sm" onclick="v12NewChapter()" style="margin-top:4px;width:100%">+ New Chapter</button>'}
+function v12RenderTreeNode(node,depth){if(!node)return'';var icon=node.type==='book'?'📁':node.type==='part'?'📂':'📄';var children=node.children||[];var childHtml='';if(children.length){childHtml='<div class="v12-tree-children">'+children.map(function(c){return v12RenderTreeNode(c,depth+1)}).join('')+'</div>'}var active=v12CurrentChapter&&node.id===v12CurrentChapter?'active':'';var clickable=node.type==='chapter'?'onclick="v12OpenChapter('+node.id+')"':'';return'<div class="v12-tree-node '+active+'" '+clickable+'><span class="tree-icon">'+icon+'</span><span>'+esc(node.title)+'</span><span class="tree-actions">'+(node.type==='chapter'?'<button onclick="event.stopPropagation();v12RenameItem('+node.id+')" title="Rename">✎</button><button onclick="event.stopPropagation();v12DeleteItem('+node.id+')" title="Delete">×</button>':'')+(node.type==='part'?'<button onclick="event.stopPropagation();v12NewChapter(null,'+node.id+')" title="New chapter">+</button>':'')+'</span></div>'+childHtml}
+async function v12NewChapter(title,parent){if(!title)title=window.prompt('Chapter title:','Chapter '+(new Date().getMonth()+1));if(!title)return;var r=await call('create_chapter',title,parent||null);if(r&&r.ok){await v12LoadManuscriptTree();await v12OpenChapter(r.item.id);showToast('Created: '+title)}else showToast(r&&r.error||'Could not create chapter')}
+async function v12NewPart(title){if(!title)title=window.prompt('Part title:','Part One');if(!title)return;var r=await call('create_part',title);if(r&&r.ok){await v12LoadManuscriptTree();showToast('Created part: '+title)}}
+async function v12OpenChapter(id){try{var r=await call('get_chapter_content',id);if(r&&r.ok){v12CurrentChapter=id;document.getElementById('v12EditorWrap').style.display='flex';document.getElementById('content').style.display='none';var ta=document.getElementById('v12Textarea');ta.value=r.content||'';v12UndoStack=[];v12RedoStack=[];v12UpdateWordCount();v12SetStatus('Loaded: '+(r.item?r.item.title:'chapter'));v12RenderTree()}}catch(e){showToast('Could not open chapter: '+e.message)}}
+async function v12RenameItem(id){var title=window.prompt('New title:');if(!title)return;var r=await call('rename_manuscript_item',id,title);if(r&&r.ok){await v12LoadManuscriptTree();showToast('Renamed')}else showToast(r&&r.error||'Rename failed')}
+async function v12DeleteItem(id){if(!window.confirm('Delete this chapter? (Contents will be lost — consider using version history)'))return;var r=await call('delete_manuscript_item',id);if(r&&r.ok){if(v12CurrentChapter===id){v12CurrentChapter=null;document.getElementById('v12EditorWrap').style.display='none';document.getElementById('content').style.display='block'}await v12LoadManuscriptTree();showToast('Deleted')}else showToast(r&&r.error||'Delete failed')}
+function v12OnInput(){var ta=document.getElementById('v12Textarea');v12UndoStack.push(ta.value);if(v12UndoStack.length>50)v12UndoStack.shift();v12RedoStack=[];v12UpdateWordCount();v12SetStatus('Editing…');if(v12AutosaveTimer)clearTimeout(v12AutosaveTimer);v12AutosaveTimer=setTimeout(v12Autosave,2000)}
+function v12OnKeydown(e){if(e.ctrlKey||e.metaKey){if(e.key==='b'){e.preventDefault();v12Format('bold')}else if(e.key==='i'){e.preventDefault();v12Format('italic')}else if(e.key==='s'){e.preventDefault();v12Autosave()}else if(e.key==='f'){e.preventDefault();v12Find()}else if(e.key==='e'){e.preventDefault();v12ToggleFocus()}else if(e.key==='z'&&!e.shiftKey){e.preventDefault();v12Undo()}else if(e.key==='y'||(e.key==='z'&&e.shiftKey)){e.preventDefault();v12Redo()}}else if(e.key==='Escape'&&document.body.classList.contains('focus-mode')){v12ToggleFocus()}}
+function v12Format(type){var ta=document.getElementById('v12Textarea');var start=ta.selectionStart,end=ta.selectionEnd,text=ta.value;if(type==='bold'){ta.value=text.slice(0,start)+'**'+text.slice(start,end)+'**'+text.slice(end);ta.selectionStart=start+2;ta.selectionEnd=end+2}else if(type==='italic'){ta.value=text.slice(0,start)+'*'+text.slice(start,end)+'*'+text.slice(end);ta.selectionStart=start+1;ta.selectionEnd=end+1}else if(type==='heading'){var lineStart=text.lastIndexOf('\n',start-1)+1;ta.value=text.slice(0,lineStart)+'## '+text.slice(lineStart);ta.selectionStart=ta.selectionEnd=start+3}else if(type==='quote'){var lineStart=text.lastIndexOf('\n',start-1)+1;ta.value=text.slice(0,lineStart)+'> '+text.slice(lineStart);ta.selectionStart=ta.selectionEnd=start+2}ta.focus();v12OnInput()}
+function v12Undo(){if(v12UndoStack.length===0)return;var ta=document.getElementById('v12Textarea');v12RedoStack.push(ta.value);ta.value=v12UndoStack.pop();v12UpdateWordCount();ta.focus()}
+function v12Redo(){if(v12RedoStack.length===0)return;var ta=document.getElementById('v12Textarea');v12UndoStack.push(ta.value);ta.value=v12RedoStack.pop();v12UpdateWordCount();ta.focus()}
+function v12Find(){var q=prompt('Find:');if(!q)return;var ta=document.getElementById('v12Textarea');var idx=ta.value.indexOf(q,ta.selectionEnd);if(idx===-1){idx=ta.value.indexOf(q,0);if(idx===-1){showToast('Not found');return}}ta.focus();ta.setSelectionRange(idx,idx+q.length)}
+function v12ToggleFocus(){document.body.classList.toggle('focus-mode');var btn=document.getElementById('v12FocusBtn');btn.style.background=document.body.classList.contains('focus-mode')?'var(--ms-soft)':'transparent'}
+function v12ToggleContext(){var p=document.getElementById('v12ContextPanel');p.classList.toggle('visible');var btn=document.getElementById('v12ContextBtn');btn.style.background=p.classList.contains('visible')?'var(--ms-soft)':'transparent'}
+function v12UpdateWordCount(){var ta=document.getElementById('v12Textarea');var wc=ta.value.trim().split(/\s+/).filter(Boolean).length;var cc=ta.value.length;var pc=ta.value.split(/\n\s*\n/).filter(Boolean).length;document.getElementById('v12StatusRight').textContent=wc+' words · '+cc+' chars · '+pc+' paragraphs'}
+function v12SetStatus(t){document.getElementById('v12StatusLeft').textContent=t}
+async function v12Autosave(){if(!v12CurrentChapter)return;v12SetStatus('Saving…');var ta=document.getElementById('v12Textarea');try{var r=await call('save_chapter_content',v12CurrentChapter,ta.value);if(r&&r.ok){v12SetStatus('Autosaved · '+r.word_count+' words');var now=new Date();v12SetStatus('Autosaved '+now.toLocaleTimeString())}else{v12SetStatus('Save failed')}}catch(e){v12SetStatus('Save error: '+e.message)}}
 function updateNavCounts(){var i=DATA.files.filter(function(f){return['raw-dumps','triage'].includes(f.folder)}).length;var m=DATA.files.filter(function(f){return['chapters','drafts','final'].includes(f.folder)}).length;document.getElementById('inboxCount').textContent=i||'';document.getElementById('msCount').textContent=m||''}
 function navigate(v){currentView=v;document.querySelectorAll('.nav-item').forEach(function(b){b.classList.toggle('active',b.dataset.view===v)});var c=document.getElementById('content');c.className='content';if(v==='inbox')c.classList.add('zone-inbox');if(v==='manuscript')c.classList.add('zone-manuscript');if(v==='home')renderHome();if(v==='inbox')renderInbox();if(v==='manuscript')renderManuscript();if(v==='search')renderSearch();if(v==='reader')renderReader();if(v==='map')renderMapView();if(v==='compare')renderCompareView();if(v==='exports')renderExports();if(v==='settings')renderSettings()}
 function setStatus(t){document.getElementById('statusText').textContent=t}
@@ -218,7 +368,11 @@ function stopTimer(){clearInterval(timerInterval);clearInterval(messageInterval)
 function cancelOperation(){operationCancelled=true;stopTimer();setStatus('Stopped. Your work is saved.')}
 window.__scribblerProgress__=function(s,t,m){updateTimerStep(s,t,m)};
 function esc(s){return String(s==null?'':s).replace(/\\/g,'\\\\').replace(/[&<>"']/g,function(m){return{'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[m]})}
-function renderHome(){var i=DATA.files.filter(function(f){return['raw-dumps','triage'].includes(f.folder)});var m=DATA.files.filter(function(f){return['chapters','drafts','final'].includes(f.folder)});var u=i.filter(function(f){return f.status==='unindexed'}).length;var sug='';if(u>0)sug='<div class="card"><h3>Suggested next</h3><p class="muted">You have '+u+' untagged brain dump(s).</p><button class="btn-primary" onclick="navigate(\'inbox\')">Preview tags</button></div>';else if(m.length>0)sug='<div class="card"><h3>Suggested next</h3><p class="muted">'+m.length+' manuscript file(s) ready for analysis.</p><button class="btn-primary" onclick="navigate(\'manuscript\')">Open Analysis</button></div>';else sug='<div class="card"><h3>Suggested next</h3><p class="muted">Drop brain dumps into the Inbox to get started.</p><button class="btn-primary" onclick="navigate(\'inbox\')">Open Inbox</button></div>';document.getElementById('content').innerHTML='<div class="view active"><div class="view-header"><h1>Your writing workshop</h1><p class="lead">Two separate worlds: <b>Inbox</b> for messy material and tagging; <b>Manuscript</b> for drafts and analysis.</p></div><div class="grid-3"><div class="card"><h3>01 · Inbox</h3><p class="muted">'+i.length+' file(s)</p><p>Brain dumps, fragments, notes.</p><button class="btn-secondary" onclick="navigate(\'inbox\')">Open Inbox</button></div><div class="card"><h3>02 · Manuscript</h3><p class="muted">'+m.length+' file(s)</p><p>Chapters and drafts for analysis.</p><button class="btn-secondary" onclick="navigate(\'manuscript\')">Open Manuscript</button></div><div class="card"><h3>03 · Search</h3><p>Find scenes by character, place, or theme.</p><button class="btn-secondary" onclick="navigate(\'search\')">Open Search</button></div></div>'+sug+'</div>'}
+function renderHome(){var i=DATA.files.filter(function(f){return['raw-dumps','triage'].includes(f.folder)});var m=DATA.files.filter(function(f){return['chapters','drafts','final'].includes(f.folder)});var u=i.filter(function(f){return f.status==='unindexed'}).length;
+/* V12: show "Continue writing" if we have a project */
+var v12Card='';if(DATA.project){v12Card='<div class="card" style="border:2px solid var(--ms-accent);background:var(--ms-soft)"><h3>✎ Continue writing</h3><p class="muted">Project: '+esc(DATA.project.name||'')+'</p><button class="btn-primary" onclick="v12ContinueWriting()" style="margin-top:8px">Open last chapter →</button></div>'}
+var sug='';if(u>0)sug='<div class="card"><h3>Suggested next</h3><p class="muted">You have '+u+' untagged brain dump(s).</p><button class="btn-primary" onclick="navigate(\'inbox\')">Preview tags</button></div>';else if(m.length>0)sug='<div class="card"><h3>Suggested next</h3><p class="muted">'+m.length+' manuscript file(s) ready for analysis.</p><button class="btn-primary" onclick="navigate(\'manuscript\')">Open Analysis</button></div>';else sug='<div class="card"><h3>Suggested next</h3><p class="muted">Drop brain dumps into the Inbox to get started.</p><button class="btn-primary" onclick="navigate(\'inbox\')">Open Inbox</button></div>';document.getElementById('content').innerHTML='<div class="view active"><div class="view-header"><h1>Your writing workshop</h1><p class="lead">Two separate worlds: <b>Inbox</b> for messy material and tagging; <b>Manuscript</b> for drafts and analysis.</p></div>'+v12Card+'<div class="grid-3"><div class="card"><h3>01 · Inbox</h3><p class="muted">'+i.length+' file(s)</p><p>Brain dumps, fragments, notes.</p><button class="btn-secondary" onclick="navigate(\'inbox\')">Open Inbox</button></div><div class="card"><h3>02 · Manuscript</h3><p class="muted">'+m.length+' file(s)</p><p>Chapters and drafts for analysis.</p><button class="btn-secondary" onclick="navigate(\'manuscript\')">Open Manuscript</button></div><div class="card"><h3>03 · Search</h3><p>Find scenes by character, place, or theme.</p><button class="btn-secondary" onclick="navigate(\'search\')">Open Search</button></div></div>'+sug+'</div>'}
+async function v12ContinueWriting(){try{var r=await call('get_last_opened_chapter');if(r&&r.ok){await v12OpenChapter(r.chapter.id)}else{showToast('No chapters yet — create one from the manuscript tree')}}catch(e){showToast('Could not open last chapter')}}
 function renderFileList(files,scope){if(!files.length)return'<div class="empty">Nothing here yet.</div>';return files.map(function(f){var safePath=encodeURIComponent(f.path||'');var historyBtn=(scope==='analysis')?'<button class="btn-ghost btn-sm" data-history="'+safePath+'" style="font-size:11px;padding:4px 10px">📚 History</button>':'';return'<div class="filerow"><input type="checkbox" data-s="'+scope+'" value="'+esc(f.path)+'"><div class="file-info"><div class="file-name">'+esc(f.filename)+'</div><div class="file-meta">'+(f.word_count||0)+' words \u00b7 '+esc(f.status)+(f.last_analyzed?' \u00b7 analysed':'')+'</div></div><span class="file-folder">'+esc(f.folder)+'</span>'+historyBtn+'<button class="btn-delete" data-del="'+safePath+'">Delete</button></div>'}).join('')}
 function selected(scope){return[].slice.call(document.querySelectorAll('input[data-s="'+scope+'"]:checked')).map(function(x){return x.value})}
 function renderInbox(){var files=DATA.files.filter(function(f){return['raw-dumps','triage'].includes(f.folder)});document.getElementById('content').innerHTML='<div class="view active zone-inbox"><div class="view-header"><h1>Scribble Inbox</h1><p class="lead">Brain dumps, fragments, notes. Nothing here is treated as a manuscript.</p></div><div class="dropzone" onclick="importFiles(\'raw-dumps\')"><div class="dropzone-icon">📂</div><div class="dropzone-text">Drop .txt or .md files here</div><div class="dropzone-hint">or click to browse</div></div><div class="card"><h3>Your brain dumps</h3><div class="filelist" id="inboxList">'+renderFileList(files,'inbox')+'</div></div><div class="actions"><button class="btn-secondary" onclick="previewTags()">Preview tags</button><button class="btn-primary" onclick="applyTags()">Apply tags to selected</button></div><div class="card" id="tagResults" style="display:none"><h3>Tagging results</h3><div id="tagResultsContent"></div></div></div>';var dz=document.querySelector('.dropzone');dz.ondragover=function(e){e.preventDefault();dz.classList.add('dragover')};dz.ondragleave=function(){dz.classList.remove('dragover')};dz.ondrop=async function(e){e.preventDefault();dz.classList.remove('dragover');var paths=[].slice.call(e.dataTransfer.files).map(function(f){return f.path});if(paths.length)await doImport('raw-dumps',paths)}}

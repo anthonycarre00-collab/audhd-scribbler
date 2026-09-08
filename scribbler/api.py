@@ -36,6 +36,9 @@ from . import settings as settings_module
 from .passage import build_index as build_passage_index
 from .relationship_map import build_map as build_relationship_map
 from .emotional_arc_comparison import compare_arcs as compare_emotional_arcs
+from .project import manager as project_manager
+from .project import migration as project_migration
+from .manuscript import tree as manuscript_tree
 
 
 def _normalize_path(p):
@@ -745,6 +748,179 @@ class Api:
         settings_module.set_setting("provider", provider)
         settings_module.set_setting("api_key", api_key)
         return {"ok": True, "message": f"Provider set to {provider}"}
+
+    # ── V12: PROJECT MANAGEMENT ─────────────────────────────────────
+
+    def create_project(self, name: str, parent_folder: str = None) -> dict:
+        """Create a new writing project."""
+        result = project_manager.create_project(name, parent_folder)
+        if result.get("ok"):
+            # Open it immediately
+            open_result = project_manager.open_project(result["path"])
+            if open_result.get("ok"):
+                project_manager.set_active_project(open_result)
+                # Try migration from v11 (non-destructive, no-op if no v11 data)
+                try:
+                    project_migration.migrate_v11_to_active_project()
+                except Exception:
+                    pass
+        return _js_safe(result)
+
+    def open_project(self, path: str) -> dict:
+        """Open an existing project."""
+        result = project_manager.open_project(path)
+        if result.get("ok"):
+            project_manager.set_active_project(result)
+        return _js_safe(result)
+
+    def list_recent_projects(self) -> dict:
+        """List recently opened projects."""
+        return _js_safe(project_manager.list_recent_projects())
+
+    def get_active_project_info(self) -> dict:
+        """Return info about the active project, or None."""
+        info = project_manager.get_active_info()
+        if not info:
+            # Fall back to the most recent project
+            recent = project_manager.list_recent_projects()
+            if recent.get("recent"):
+                r = recent["recent"][0]
+                open_result = project_manager.open_project(r["path"])
+                if open_result.get("ok"):
+                    project_manager.set_active_project(open_result)
+                    info = project_manager.get_active_info()
+        if info:
+            return _js_safe({"ok": True, "info": info})
+        return {"ok": False, "error": "No active project"}
+
+    def get_project_theme(self) -> dict:
+        """Return the active project's theme (dark/light)."""
+        conn = project_manager.get_active_conn()
+        if conn is None:
+            return {"ok": True, "theme": "dark"}
+        row = conn.execute("SELECT theme FROM v12_project WHERE id = 1").fetchone()
+        return {"ok": True, "theme": row["theme"] if row else "dark"}
+
+    def set_project_theme(self, theme: str) -> dict:
+        """Set the active project's theme."""
+        conn = project_manager.get_active_conn()
+        if conn is None:
+            return {"ok": False, "error": "No active project"}
+        conn.execute("UPDATE v12_project SET theme = ? WHERE id = 1", (theme,))
+        conn.commit()
+        return {"ok": True, "theme": theme}
+
+    # ── V12: MANUSCRIPT TREE ────────────────────────────────────────
+
+    def get_manuscript_tree(self) -> dict:
+        """Return the full manuscript tree (nested dict)."""
+        try:
+            tree = manuscript_tree.get_tree()
+            return {"ok": True, "tree": _js_safe(tree)}
+        except Exception as e:
+            return {"ok": False, "error": str(e)}
+
+    def get_manuscript_flat_list(self) -> dict:
+        """Return a flat list of all manuscript items."""
+        try:
+            items = manuscript_tree.get_flat_list()
+            return {"ok": True, "items": _js_safe(items)}
+        except Exception as e:
+            return {"ok": False, "error": str(e)}
+
+    def create_chapter(self, title: str, parent_id: int = None) -> dict:
+        """Create a new chapter."""
+        try:
+            item = manuscript_tree.create_chapter(title, parent_id)
+            return {"ok": True, "item": _js_safe(item)}
+        except Exception as e:
+            return {"ok": False, "error": str(e)}
+
+    def create_part(self, title: str, parent_id: int = None) -> dict:
+        """Create a new part (folder)."""
+        try:
+            item = manuscript_tree.create_part(title, parent_id)
+            return {"ok": True, "item": _js_safe(item)}
+        except Exception as e:
+            return {"ok": False, "error": str(e)}
+
+    def rename_manuscript_item(self, item_id: int, new_title: str) -> dict:
+        """Rename a manuscript item."""
+        try:
+            item = manuscript_tree.rename_item(item_id, new_title)
+            return {"ok": True, "item": _js_safe(item)}
+        except Exception as e:
+            return {"ok": False, "error": str(e)}
+
+    def move_manuscript_item(self, item_id: int, new_parent_id: int, new_sort_order: int) -> dict:
+        """Move an item to a new parent and/or position."""
+        try:
+            manuscript_tree.move_item(item_id, new_parent_id, new_sort_order)
+            return {"ok": True}
+        except Exception as e:
+            return {"ok": False, "error": str(e)}
+
+    def delete_manuscript_item(self, item_id: int) -> dict:
+        """Delete an item and all its children."""
+        try:
+            manuscript_tree.delete_item(item_id)
+            return {"ok": True}
+        except Exception as e:
+            return {"ok": False, "error": str(e)}
+
+    def duplicate_manuscript_item(self, item_id: int) -> dict:
+        """Duplicate an item."""
+        try:
+            item = manuscript_tree.duplicate_item(item_id)
+            return {"ok": True, "item": _js_safe(item)}
+        except Exception as e:
+            return {"ok": False, "error": str(e)}
+
+    def get_chapter_content(self, chapter_id: int) -> dict:
+        """Return the content of a chapter."""
+        try:
+            manuscript_tree.touch_chapter(chapter_id)
+            content = manuscript_tree.get_chapter_content(chapter_id)
+            item = manuscript_tree.get_item(chapter_id)
+            return {"ok": True, "content": content or "", "item": _js_safe(item)}
+        except Exception as e:
+            return {"ok": False, "error": str(e)}
+
+    def save_chapter_content(self, chapter_id: int, content: str) -> dict:
+        """Save chapter content (autosave)."""
+        try:
+            result = manuscript_tree.save_chapter_content(chapter_id, content)
+            return _js_safe(result)
+        except Exception as e:
+            return {"ok": False, "error": str(e)}
+
+    def get_last_opened_chapter(self) -> dict:
+        """Return the last-opened chapter for 'Continue writing'."""
+        try:
+            chapter = manuscript_tree.get_last_opened_chapter()
+            if chapter:
+                return {"ok": True, "chapter": _js_safe(chapter)}
+            return {"ok": False, "error": "No chapters yet"}
+        except Exception as e:
+            return {"ok": False, "error": str(e)}
+
+    def get_version_history(self, chapter_id: int) -> dict:
+        """Return version history for a chapter."""
+        try:
+            history = manuscript_tree.get_version_history(chapter_id)
+            return {"ok": True, "history": _js_safe(history)}
+        except Exception as e:
+            return {"ok": False, "error": str(e)}
+
+    def restore_version(self, version_id: int) -> dict:
+        """Restore a chapter to a previous version."""
+        try:
+            chapter = manuscript_tree.restore_version(version_id)
+            if chapter:
+                return {"ok": True, "chapter": _js_safe(chapter)}
+            return {"ok": False, "error": "Version not found"}
+        except Exception as e:
+            return {"ok": False, "error": str(e)}
 
     # ── INTERNAL ────────────────────────────────────────────────────
 

@@ -133,6 +133,202 @@ def _init_tables(conn: sqlite3.Connection):
     except sqlite3.OperationalError as e:
         # FTS5 not available — full-text search will fall back to Python loop
         pass
+
+    # === V12 SCHEMA ===
+    # New tables for the writing-app redesign. Existing tables are preserved.
+    conn.executescript("""
+    CREATE TABLE IF NOT EXISTS v12_project (
+        id              INTEGER PRIMARY KEY DEFAULT 1,
+        name            TEXT NOT NULL,
+        folder_path     TEXT NOT NULL,
+        created_at      TEXT NOT NULL,
+        last_opened_at  TEXT,
+        last_chapter_id INTEGER,
+        theme           TEXT DEFAULT 'dark',
+        schema_version  INTEGER DEFAULT 12
+    );
+
+    CREATE TABLE IF NOT EXISTS manuscript_items (
+        id              INTEGER PRIMARY KEY AUTOINCREMENT,
+        parent_id       INTEGER,
+        type            TEXT NOT NULL,
+        title           TEXT NOT NULL,
+        slug            TEXT,
+        sort_order      INTEGER DEFAULT 0,
+        content         TEXT,
+        word_count      INTEGER DEFAULT 0,
+        status          TEXT DEFAULT 'seedling',
+        created_at      TEXT NOT NULL,
+        updated_at      TEXT,
+        last_opened_at  TEXT,
+        FOREIGN KEY (parent_id) REFERENCES manuscript_items(id) ON DELETE CASCADE
+    );
+    CREATE INDEX IF NOT EXISTS idx_ms_parent ON manuscript_items(parent_id, sort_order);
+
+    CREATE TABLE IF NOT EXISTS brain_dumps (
+        id              INTEGER PRIMARY KEY AUTOINCREMENT,
+        title           TEXT,
+        content         TEXT NOT NULL,
+        word_count      INTEGER DEFAULT 0,
+        created_at      TEXT NOT NULL,
+        tagged_at       TEXT,
+        tags            TEXT,
+        status          TEXT DEFAULT 'unprocessed',
+        promoted_to     INTEGER
+    );
+
+    CREATE TABLE IF NOT EXISTS characters_v12 (
+        id              INTEGER PRIMARY KEY AUTOINCREMENT,
+        name            TEXT NOT NULL UNIQUE,
+        aliases         TEXT,
+        role            TEXT,
+        age             TEXT,
+        occupation      TEXT,
+        background      TEXT,
+        physical        TEXT,
+        personality     TEXT,
+        voice           TEXT,
+        motivation      TEXT,
+        arc_summary     TEXT,
+        arc_structure   TEXT,
+        notes           TEXT,
+        provenance      TEXT DEFAULT 'author_confirmed',
+        created_at      TEXT NOT NULL,
+        updated_at      TEXT
+    );
+
+    CREATE TABLE IF NOT EXISTS places_v12 (
+        id              INTEGER PRIMARY KEY AUTOINCREMENT,
+        name            TEXT NOT NULL UNIQUE,
+        type            TEXT,
+        location        TEXT,
+        description     TEXT,
+        atmosphere      TEXT,
+        sensory_signature TEXT,
+        history         TEXT,
+        significance    TEXT,
+        notes           TEXT,
+        provenance      TEXT DEFAULT 'author_confirmed',
+        created_at      TEXT NOT NULL,
+        updated_at      TEXT
+    );
+
+    CREATE TABLE IF NOT EXISTS themes_v12 (
+        id              INTEGER PRIMARY KEY AUTOINCREMENT,
+        name            TEXT NOT NULL UNIQUE,
+        category        TEXT,
+        definition      TEXT,
+        related_ideas   TEXT,
+        symbols         TEXT,
+        motifs          TEXT,
+        evolution       TEXT,
+        notes           TEXT,
+        provenance      TEXT DEFAULT 'author_confirmed',
+        created_at      TEXT NOT NULL,
+        updated_at      TEXT
+    );
+
+    CREATE TABLE IF NOT EXISTS arcs (
+        id              INTEGER PRIMARY KEY AUTOINCREMENT,
+        title           TEXT NOT NULL,
+        type            TEXT,
+        purpose         TEXT,
+        beginning       TEXT,
+        climax          TEXT,
+        resolution      TEXT,
+        turning_points  TEXT,
+        major_beats     TEXT,
+        notes           TEXT,
+        provenance      TEXT DEFAULT 'author_confirmed',
+        created_at      TEXT NOT NULL,
+        updated_at      TEXT
+    );
+
+    CREATE TABLE IF NOT EXISTS relationships_v12 (
+        id              INTEGER PRIMARY KEY AUTOINCREMENT,
+        character_a_id  INTEGER NOT NULL,
+        character_b_id  INTEGER NOT NULL,
+        relation_type   TEXT,
+        history         TEXT,
+        current_state   TEXT,
+        conflicts       TEXT,
+        key_scenes      TEXT,
+        notes           TEXT,
+        provenance      TEXT DEFAULT 'author_confirmed',
+        created_at      TEXT NOT NULL,
+        updated_at      TEXT
+    );
+
+    CREATE TABLE IF NOT EXISTS scenes (
+        id              INTEGER PRIMARY KEY AUTOINCREMENT,
+        chapter_id      INTEGER NOT NULL,
+        title           TEXT,
+        summary         TEXT,
+        place_id        INTEGER,
+        time_marker     TEXT,
+        purpose         TEXT,
+        emotional_beat  TEXT,
+        arc_id          INTEGER,
+        char_start      INTEGER,
+        char_end        INTEGER,
+        provenance      TEXT DEFAULT 'author_confirmed'
+    );
+
+    CREATE TABLE IF NOT EXISTS notes (
+        id              INTEGER PRIMARY KEY AUTOINCREMENT,
+        target_type     TEXT NOT NULL,
+        target_id       INTEGER,
+        target_chapter  INTEGER,
+        target_paragraph INTEGER,
+        content         TEXT NOT NULL,
+        created_at      TEXT NOT NULL,
+        provenance      TEXT DEFAULT 'author_confirmed'
+    );
+    CREATE INDEX IF NOT EXISTS idx_notes_target ON notes(target_type, target_id);
+
+    CREATE TABLE IF NOT EXISTS analysis_findings (
+        id              INTEGER PRIMARY KEY AUTOINCREMENT,
+        source_type     TEXT NOT NULL,
+        source_id       INTEGER,
+        source_chapter  INTEGER,
+        source_paragraph INTEGER,
+        tool            TEXT NOT NULL,
+        category        TEXT NOT NULL,
+        observation     TEXT NOT NULL,
+        evidence        TEXT,
+        why_it_matters  TEXT,
+        suggested_improvement TEXT,
+        status          TEXT DEFAULT 'open',
+        provenance      TEXT DEFAULT 'suggested',
+        created_at      TEXT NOT NULL,
+        resolved_at     TEXT
+    );
+    CREATE INDEX IF NOT EXISTS idx_findings_source ON analysis_findings(source_type, source_id);
+    CREATE INDEX IF NOT EXISTS idx_findings_status ON analysis_findings(status);
+
+    CREATE TABLE IF NOT EXISTS version_history (
+        id              INTEGER PRIMARY KEY AUTOINCREMENT,
+        chapter_id      INTEGER NOT NULL,
+        content         TEXT NOT NULL,
+        word_count      INTEGER,
+        saved_at        TEXT NOT NULL,
+        reason          TEXT
+    );
+    CREATE INDEX IF NOT EXISTS idx_version_chapter ON version_history(chapter_id, saved_at);
+
+    CREATE TABLE IF NOT EXISTS writing_sessions (
+        id              INTEGER PRIMARY KEY AUTOINCREMENT,
+        session_date    TEXT NOT NULL,
+        chapter_id      INTEGER,
+        words_written   INTEGER DEFAULT 0,
+        duration_seconds INTEGER DEFAULT 0
+    );
+
+    CREATE TABLE IF NOT EXISTS editor_prefs (
+        key             TEXT PRIMARY KEY,
+        value           TEXT
+    );
+    """)
     conn.commit()
 
 
