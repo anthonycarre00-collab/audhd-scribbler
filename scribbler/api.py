@@ -931,8 +931,160 @@ class Api:
             if content is None:
                 return {"ok": False, "error": "Chapter not found"}
             from .editor.live_checks import run_live_checks as _run
+            from .editor.grammar_checks import run_grammar_checks as _run_grammar
             result = _run(content, cursor_offset)
+            grammar = _run_grammar(content)
+            result["markers"].extend(grammar["markers"])
+            for k, v in grammar["counts"].items():
+                result["counts"][k] = result["counts"].get(k, 0) + v
+            result["total"] = len(result["markers"])
             return {"ok": True, "result": _js_safe(result)}
+        except Exception as e:
+            return {"ok": False, "error": str(e)}
+
+    # ── V12: CHARACTER PROFILES ─────────────────────────────────────
+
+    def list_characters(self) -> dict:
+        """Return all characters (summary)."""
+        try:
+            from .profiles import characters as char_mod
+            return {"ok": True, "characters": _js_safe(char_mod.list_characters())}
+        except Exception as e:
+            return {"ok": False, "error": str(e)}
+
+    def get_character(self, character_id: int) -> dict:
+        """Return a single character with all fields + appearances."""
+        try:
+            from .profiles import characters as char_mod
+            ch = char_mod.get_character(character_id)
+            if ch:
+                return {"ok": True, "character": _js_safe(ch)}
+            return {"ok": False, "error": "Character not found"}
+        except Exception as e:
+            return {"ok": False, "error": str(e)}
+
+    def create_character(self, data: dict) -> dict:
+        """Create a new character."""
+        try:
+            from .profiles import characters as char_mod
+            result = char_mod.create_character(data)
+            if "error" in result:
+                return {"ok": False, "error": result["error"]}
+            return {"ok": True, "character": _js_safe(result)}
+        except Exception as e:
+            return {"ok": False, "error": str(e)}
+
+    def update_character(self, character_id: int, data: dict) -> dict:
+        """Update an existing character."""
+        try:
+            from .profiles import characters as char_mod
+            ch = char_mod.update_character(character_id, data)
+            if ch:
+                return {"ok": True, "character": _js_safe(ch)}
+            return {"ok": False, "error": "Character not found"}
+        except Exception as e:
+            return {"ok": False, "error": str(e)}
+
+    def delete_character(self, character_id: int) -> dict:
+        """Delete a character."""
+        try:
+            from .profiles import characters as char_mod
+            char_mod.delete_character(character_id)
+            return {"ok": True}
+        except Exception as e:
+            return {"ok": False, "error": str(e)}
+
+    # ── V12: PLACE PROFILES ─────────────────────────────────────────
+
+    def list_places(self) -> dict:
+        try:
+            from .profiles import places as place_mod
+            return {"ok": True, "places": _js_safe(place_mod.list_places())}
+        except Exception as e:
+            return {"ok": False, "error": str(e)}
+
+    def get_place(self, place_id: int) -> dict:
+        try:
+            from .profiles import places as place_mod
+            p = place_mod.get_place(place_id)
+            if p:
+                return {"ok": True, "place": _js_safe(p)}
+            return {"ok": False, "error": "Place not found"}
+        except Exception as e:
+            return {"ok": False, "error": str(e)}
+
+    def create_place(self, data: dict) -> dict:
+        try:
+            from .profiles import places as place_mod
+            result = place_mod.create_place(data)
+            if "error" in result:
+                return {"ok": False, "error": result["error"]}
+            return {"ok": True, "place": _js_safe(result)}
+        except Exception as e:
+            return {"ok": False, "error": str(e)}
+
+    def update_place(self, place_id: int, data: dict) -> dict:
+        try:
+            from .profiles import places as place_mod
+            p = place_mod.update_place(place_id, data)
+            if p:
+                return {"ok": True, "place": _js_safe(p)}
+            return {"ok": False, "error": "Place not found"}
+        except Exception as e:
+            return {"ok": False, "error": str(e)}
+
+    def delete_place(self, place_id: int) -> dict:
+        try:
+            from .profiles import places as place_mod
+            place_mod.delete_place(place_id)
+            return {"ok": True}
+        except Exception as e:
+            return {"ok": False, "error": str(e)}
+
+    # ── V12: THEME PROFILES ─────────────────────────────────────────
+
+    def list_themes(self) -> dict:
+        try:
+            from .profiles import themes as theme_mod
+            return {"ok": True, "themes": _js_safe(theme_mod.list_themes())}
+        except Exception as e:
+            return {"ok": False, "error": str(e)}
+
+    def get_theme(self, theme_id: int) -> dict:
+        try:
+            from .profiles import themes as theme_mod
+            t = theme_mod.get_theme(theme_id)
+            if t:
+                return {"ok": True, "theme": _js_safe(t)}
+            return {"ok": False, "error": "Theme not found"}
+        except Exception as e:
+            return {"ok": False, "error": str(e)}
+
+    def create_theme(self, data: dict) -> dict:
+        try:
+            from .profiles import themes as theme_mod
+            result = theme_mod.create_theme(data)
+            if "error" in result:
+                return {"ok": False, "error": result["error"]}
+            return {"ok": True, "theme": _js_safe(result)}
+        except Exception as e:
+            return {"ok": False, "error": str(e)}
+
+    def update_theme(self, theme_id: int, data: dict) -> dict:
+        try:
+            from .profiles import themes as theme_mod
+            t = theme_mod.update_theme(theme_id, data)
+            if t:
+                return {"ok": True, "theme": _js_safe(t)}
+            return {"ok": False, "error": "Theme not found"}
+        except Exception as e:
+            return {"ok": False, "error": str(e)}
+
+    def delete_theme(self, theme_id: int) -> dict:
+        try:
+            from .profiles import themes as theme_mod
+            theme_mod.delete_theme(theme_id)
+            return {"ok": True}
         except Exception as e:
             return {"ok": False, "error": str(e)}
 
