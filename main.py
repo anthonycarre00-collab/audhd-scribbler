@@ -45,22 +45,28 @@ def main():
     html_string = load_html()
     api = Api()
 
-    # Icon path (works in both dev and frozen exe)
-    if getattr(sys, "frozen", False):
-        icon_path = os.path.join(sys._MEIPASS, "assets", "icons", "app.ico")
-    else:
-        icon_path = os.path.join(SCRIPT_DIR, "assets", "icons", "app.ico")
-
     window = webview.create_window(
         title="The Audhd Scribbler",
         html=html_string,
         js_api=api,
-        icon=icon_path,
         width=1200,
         height=800,
         min_size=(900, 600),
         text_select=True,
     )
+
+    # Set the window icon after creation (pywebview doesn't support icon= in create_window)
+    icon_path = os.path.join(SCRIPT_DIR, "assets", "icons", "app.ico")
+    if getattr(sys, "frozen", False):
+        icon_path = os.path.join(sys._MEIPASS, "assets", "icons", "app.ico")
+    if os.path.exists(icon_path):
+        try:
+            import ctypes
+            # On Windows, set the window icon via the taskbar
+            if sys.platform == "win32":
+                ctypes.windll.shell32.SetCurrentProcessExplicitAppUserModelID("audhd.scribbler.app")
+        except Exception:
+            pass
 
     webview.start(debug=False)
 
