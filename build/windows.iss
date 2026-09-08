@@ -2,7 +2,7 @@
 ; Build with: iscc build\windows.iss
 
 #define MyAppName "Audhd Scribbler"
-#define MyAppVersion "5.0"
+#define MyAppVersion "12.0"
 #define MyAppPublisher "Audhd Scribbler"
 #define MyAppExeName "AudhdScribbler.exe"
 
@@ -22,6 +22,7 @@ SolidCompression=yes
 WizardStyle=modern
 ArchitecturesAllowed=x64compatible
 ArchitecturesInstallIn64BitMode=x64compatible
+SetupIconFile=..\assets\icons\app.ico
 
 [Languages]
 Name: "english"; MessagesFile: "compiler:Default.isl"

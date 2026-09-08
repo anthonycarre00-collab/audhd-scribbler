@@ -922,6 +922,20 @@ class Api:
         except Exception as e:
             return {"ok": False, "error": str(e)}
 
+    # ── V12: LIVE CHECKS ────────────────────────────────────────────
+
+    def run_live_checks(self, chapter_id: int, cursor_offset: int = 0) -> dict:
+        """Run live writing checks on a chapter's content, focused on the paragraph near cursor."""
+        try:
+            content = manuscript_tree.get_chapter_content(chapter_id)
+            if content is None:
+                return {"ok": False, "error": "Chapter not found"}
+            from .editor.live_checks import run_live_checks as _run
+            result = _run(content, cursor_offset)
+            return {"ok": True, "result": _js_safe(result)}
+        except Exception as e:
+            return {"ok": False, "error": str(e)}
+
     # ── INTERNAL ────────────────────────────────────────────────────
 
     def _push_progress(self, step: int, total: int, message: str):

@@ -76,6 +76,7 @@ exe = EXE(
     exclude_binaries=True, name='AudhdScribbler',
     debug=False, bootloader_ignore_signals=False, strip=False, upx=True,
     console=False,
+    icon=str(ROOT / 'assets' / 'icons' / 'app.ico'),
 )
 
 coll = COLLECT(

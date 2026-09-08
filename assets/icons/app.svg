@@ -1,0 +1,31 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 256 256" width="256" height="256">
+  <defs>
+    <linearGradient id="bg" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0%" stop-color="#242120"/>
+      <stop offset="100%" stop-color="#1A1816"/>
+    </linearGradient>
+    <linearGradient id="nib" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0%" stop-color="#E8B888"/>
+      <stop offset="100%" stop-color="#C89B6B"/>
+    </linearGradient>
+  </defs>
+  <!-- Background -->
+  <rect width="256" height="256" rx="48" fill="url(#bg)"/>
+  <!-- Brain curve (upper portion) - represents the "messy but genius" mind -->
+  <path d="M 80 60 Q 128 40 176 60 Q 200 80 190 110 Q 180 130 150 125 Q 128 120 106 125 Q 76 130 66 110 Q 56 80 80 60 Z"
+        fill="none" stroke="#8FB4A4" stroke-width="3" stroke-linecap="round" opacity="0.7"/>
+  <!-- Brain folds -->
+  <path d="M 100 75 Q 110 70 120 78 M 130 72 Q 140 68 150 75 M 110 95 Q 120 90 130 98 M 145 90 Q 155 85 165 95"
+        fill="none" stroke="#8FB4A4" stroke-width="2" stroke-linecap="round" opacity="0.5"/>
+  <!-- Fountain pen nib (lower portion) - represents the writing -->
+  <path d="M 128 110 L 145 170 L 128 200 L 111 170 Z"
+        fill="url(#nib)" stroke="#D4A574" stroke-width="1.5" stroke-linejoin="round"/>
+  <!-- Nib slit -->
+  <line x1="128" y1="120" x2="128" y2="185" stroke="#1A1816" stroke-width="2"/>
+  <!-- Nib breathing hole -->
+  <circle cx="128" cy="155" r="4" fill="#1A1816"/>
+  <!-- Spark (the "genius" flash) -->
+  <path d="M 195 55 L 200 45 L 205 55 L 215 50 L 208 60 L 218 65 L 205 68 L 210 78 L 200 70 L 195 80 L 198 68 L 188 65 L 198 60 Z"
+        fill="#D4A574" opacity="0.9"/>
+  <circle cx="200" cy="60" r="3" fill="#E8B888"/>
+</svg>

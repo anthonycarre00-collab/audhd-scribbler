@@ -45,10 +45,17 @@ def main():
     html_string = load_html()
     api = Api()
 
+    # Icon path (works in both dev and frozen exe)
+    if getattr(sys, "frozen", False):
+        icon_path = os.path.join(sys._MEIPASS, "assets", "icons", "app.ico")
+    else:
+        icon_path = os.path.join(SCRIPT_DIR, "assets", "icons", "app.ico")
+
     window = webview.create_window(
         title="The Audhd Scribbler",
         html=html_string,
         js_api=api,
+        icon=icon_path,
         width=1200,
         height=800,
         min_size=(900, 600),
