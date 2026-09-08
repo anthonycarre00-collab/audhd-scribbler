@@ -81,6 +81,15 @@ body.theme-dark .tool-card.selected{background:var(--ms-soft);border-color:var(-
 .v12-context-panel h4:first-child{margin-top:0}
 .v12-context-item{padding:6px 10px;border-radius:var(--r-sm);cursor:pointer;font-size:14px;margin-bottom:2px}
 .v12-context-item:hover{background:var(--soft)}
+.v12-context-group-label{font-size:11px;text-transform:uppercase;letter-spacing:0.05em;color:var(--muted);padding:6px 10px 2px;font-weight:600}
+.v12-context-item.v12-context-expandable{display:flex;justify-content:space-between;align-items:center;gap:6px}
+.v12-context-item.v12-context-expandable::after{content:'▾';font-size:10px;color:var(--muted);flex-shrink:0}
+.v12-context-detail{padding:0 4px}
+.v12-context-detail-body{font-size:13px;line-height:1.5;color:var(--ink);background:var(--soft);border-radius:var(--r-sm);padding:8px 10px;margin:2px 0 6px;border-left:2px solid var(--ms-accent)}
+.v12-context-empty{font-style:italic;opacity:0.85}
+.v12-context-tla{display:flex;justify-content:space-between;align-items:center;padding:8px 10px;margin-top:var(--sp-sm);border:1px solid var(--line);border-radius:var(--r-sm);cursor:pointer;font-size:13px;background:var(--paper);transition:border-color .15s,background .15s}
+.v12-context-tla:hover{background:var(--soft);border-color:var(--ms-accent)}
+.v12-context-badge{background:var(--ms-accent);color:var(--paper);font-size:11px;font-weight:600;padding:1px 7px;border-radius:10px;min-width:20px;text-align:center}
 .v12-tree{font-size:14px;user-select:none}
 .v12-tree-node{padding:4px 8px;cursor:pointer;border-radius:var(--r-sm);display:flex;align-items:center;gap:6px}
 .v12-tree-node:hover{background:var(--soft)}
@@ -282,7 +291,7 @@ button{user-select:none}
         <button class="nav-item" data-view="exports" onclick="navigate('exports')">⬇ Export</button>
         <button class="nav-item" data-view="settings" onclick="navigate('settings')">⚙ Settings</button>
       </nav>
-      <div class="sidebar-footer"><span id="versionTag">v12.0 · local</span></div>
+      <div class="sidebar-footer"><span id="versionTag">v12.1 · local</span></div>
     </aside>
     <main class="content" id="content"></main>
     <!-- V12: Editor pane (shown when a chapter is open) -->
@@ -300,6 +309,8 @@ button{user-select:none}
         <span class="sep"></span>
         <button onclick="v12ToggleFocus()" title="Focus mode (Ctrl+E)" id="v12FocusBtn">🎯</button>
         <button onclick="v12ToggleContext()" title="Toggle context panel" id="v12ContextBtn">📊</button>
+        <span class="sep"></span>
+        <button onclick="v12AnalyseChapter()" title="Analyse this chapter" style="color:var(--ms-accent)">🔬 Analyse</button>
       </div>
       <textarea class="v12-textarea" id="v12Textarea" placeholder="Start writing…" oninput="v12OnInput()" onkeydown="v12OnKeydown(event)"></textarea>
       <div class="v12-editor-status">
@@ -340,7 +351,7 @@ var apiReady=false;
 window.addEventListener('pywebviewready',function(){apiReady=true;load()});
 function waitForApi(){return new Promise(function(r){if(apiReady)return r();window.addEventListener('pywebviewready',function(){r()})})}
 async function call(method){await waitForApi();var args=[].slice.call(arguments,1);try{return await window.pywebview.api[method].apply(window.pywebview.api,args)}catch(e){console.error('API '+method+' failed:',e);throw new Error(e.message||String(e))}}
-async function load(){try{var s=await call('get_status');aiAvailable=!!s.llm_available;document.getElementById('statusText').textContent=s.llm||'Ready';document.getElementById('statusDot').style.color=s.ok?'var(--success)':'var(--danger)';document.getElementById('versionTag')&&(document.getElementById('versionTag').textContent='v'+(s.version||'12.0')+' · '+(aiAvailable?'AI on':'AI off'));var f=await call('list_files');DATA.files=f.files||[];var t=await call('get_tools');DATA.tools=t.tools||{};DATA.catalog=t.catalog||{};updateNavCounts();
+async function load(){try{var s=await call('get_status');aiAvailable=!!s.llm_available;document.getElementById('statusText').textContent=s.llm||'Ready';document.getElementById('statusDot').style.color=s.ok?'var(--success)':'var(--danger)';document.getElementById('versionTag')&&(document.getElementById('versionTag').textContent='v'+(s.version||'12.1')+' · '+(aiAvailable?'AI on':'AI off'));var f=await call('list_files');DATA.files=f.files||[];var t=await call('get_tools');DATA.tools=t.tools||{};DATA.catalog=t.catalog||{};updateNavCounts();
 /* V12: Check for active project, show project picker if none */
 try{var pi=await call('get_active_project_info');if(pi&&pi.ok){DATA.project=pi.info;applyTheme(pi.info.theme||'dark');await v12LoadManuscriptTree()}else{showProjectPicker()}}catch(e){showProjectPicker()}
 if(currentView)navigate(currentView)}catch(e){setStatus('Could not load: '+e.message)}}
@@ -369,13 +380,119 @@ function v12Undo(){if(v12UndoStack.length===0)return;var ta=document.getElementB
 function v12Redo(){if(v12RedoStack.length===0)return;var ta=document.getElementById('v12Textarea');v12UndoStack.push(ta.value);ta.value=v12RedoStack.pop();v12UpdateWordCount();ta.focus()}
 function v12Find(){var q=prompt('Find:');if(!q)return;var ta=document.getElementById('v12Textarea');var idx=ta.value.indexOf(q,ta.selectionEnd);if(idx===-1){idx=ta.value.indexOf(q,0);if(idx===-1){showToast('Not found');return}}ta.focus();ta.setSelectionRange(idx,idx+q.length)}
 function v12ToggleFocus(){document.body.classList.toggle('focus-mode');var btn=document.getElementById('v12FocusBtn');btn.style.background=document.body.classList.contains('focus-mode')?'var(--ms-soft)':'transparent'}
-function v12ToggleContext(){var p=document.getElementById('v12ContextPanel');p.classList.toggle('visible');var btn=document.getElementById('v12ContextBtn');btn.style.background=p.classList.contains('visible')?'var(--ms-soft)':'transparent'}
+function v12ToggleContext(){var p=document.getElementById('v12ContextPanel');p.classList.toggle('visible');var btn=document.getElementById('v12ContextBtn');btn.style.background=p.classList.contains('visible')?'var(--ms-soft)':'transparent';if(p.classList.contains('visible')&&v12CurrentChapter){v12RenderContextPanel(v12CurrentChapter,document.getElementById('v12Textarea').value,v12LastLiveChecks)}}
 function v12UpdateWordCount(){var ta=document.getElementById('v12Textarea');var wc=ta.value.trim().split(/\s+/).filter(Boolean).length;var cc=ta.value.length;var pc=ta.value.split(/\n\s*\n/).filter(Boolean).length;document.getElementById('v12StatusRight').textContent=wc+' words · '+cc+' chars · '+pc+' paragraphs'}
 function v12SetStatus(t){document.getElementById('v12StatusLeft').textContent=t}
 async function v12Autosave(){if(!v12CurrentChapter)return;v12SetStatus('Saving…');var ta=document.getElementById('v12Textarea');try{var r=await call('save_chapter_content',v12CurrentChapter,ta.value);if(r&&r.ok){v12SetStatus('Autosaved · '+r.word_count+' words');var now=new Date();v12SetStatus('Autosaved '+now.toLocaleTimeString());v12RunLiveChecks()}else{v12SetStatus('Save failed')}}catch(e){v12SetStatus('Save error: '+e.message)}}
-async function v12RunLiveChecks(){if(!v12CurrentChapter)return;var ta=document.getElementById('v12Textarea');var cursor=ta.selectionStart||0;try{var r=await call('run_live_checks',v12CurrentChapter,cursor);if(r&&r.ok){v12RenderLiveChecks(r.result)}}catch(e){console.error('live checks failed',e)}}
-function v12RenderLiveChecks(result){var panel=document.getElementById('v12ContextContent');if(!panel)return;var markers=result.markers||[];var counts=result.counts||{};var html='<h4>🔬 Live ('+result.total+')</h4>';if(!markers.length){html+='<p class="muted" style="font-size:13px;padding:4px 0">No issues detected. Keep writing.</p>'}else{markers.slice(0,12).forEach(function(m){var icon=m.severity==='error'?'🔴':m.severity==='warning'?'🟡':'🔵';html+='<div class="v12-context-item" onclick="v12JumpToMarker('+m.char_start+','+m.char_end+')" title="'+esc(m.message)+'">'+icon+' ¶'+m.paragraph+' '+esc(m.message)+' <span class="muted" style="font-size:11px">['+m.check_type+']</span></div>'});if(markers.length>12){html+='<div class="muted" style="font-size:11px;padding:4px 8px">+'+(markers.length-12)+' more</div>'}}if(result.total>0){html+='<h4>Counts</h4>';Object.keys(counts).forEach(function(k){html+='<div class="v12-context-item" style="font-size:12px">'+k+': '+counts[k]+'</div>'})}html+='<h4>Context</h4><p class="muted" style="font-size:13px;padding:4px 0">Characters, places, and themes will appear here in a future phase.</p>';panel.innerHTML=html}
+async function v12RunLiveChecks(){if(!v12CurrentChapter)return;var ta=document.getElementById('v12Textarea');var cursor=ta.selectionStart||0;try{var r=await call('run_live_checks',v12CurrentChapter,cursor);if(r&&r.ok){v12LastLiveChecks=r.result;var panel=document.getElementById('v12ContextPanel');if(panel&&panel.classList.contains('visible')){v12RenderContextPanel(v12CurrentChapter,ta.value,r.result)}}}catch(e){console.error('live checks failed',e)}}
+/* === V12.1: CONTEXT PANEL — "What's connected to this?" === */
+var v12LastLiveChecks=null;var v12ContextDetailCache={};
+function v12CurrentParagraph(text,cursor){if(!text)return '';cursor=cursor||0;var re=/[^\n][\s\S]*?(?=\n\s*\n|$)/g,m,last='';while((m=re.exec(text))!==null){if(cursor>=m.index&&cursor<=m.index+m[0].length)return m[0];last=m[0];if(m.index===re.lastIndex)re.lastIndex++}return last||text}
+function v12NameInText(name,textLower){if(!name||name.length<2||!textLower)return false;var esc=String(name).replace(/[.*+?^${}()|[\]\\]/g,'\\$&').toLowerCase();return new RegExp('(?:^|[^\\w-])'+esc+'(?:$|[^\\w-])').test(textLower)}
+function v12ToggleContextDetail(key){var el=document.getElementById('detail-'+key);if(el)el.style.display=el.style.display==='none'?'block':'none'}
+function v12RenderLiveChecksHTML(result){result=result||{markers:[],counts:{},total:0};var markers=result.markers||[],counts=result.counts||{};var html='<h4>🔬 Live ('+result.total+')</h4>';if(!markers.length){html+='<p class="muted" style="font-size:13px;padding:4px 0">No issues detected. Keep writing.</p>'}else{markers.slice(0,12).forEach(function(m){var icon=m.severity==='error'?'🔴':m.severity==='warning'?'🟡':'🔵';html+='<div class="v12-context-item" onclick="v12JumpToMarker('+m.char_start+','+m.char_end+')" title="'+esc(m.message)+'">'+icon+' ¶'+m.paragraph+' '+esc(m.message)+' <span class="muted" style="font-size:11px">['+m.check_type+']</span></div>'});if(markers.length>12)html+='<div class="muted" style="font-size:11px;padding:4px 8px">+'+(markers.length-12)+' more</div>'}if(result.total>0){html+='<h4>Counts</h4>';Object.keys(counts).forEach(function(k){html+='<div class="v12-context-item" style="font-size:12px">'+k+': '+counts[k]+'</div>'})}return html}
+async function v12RenderContextPanel(chapterId,chapterContent,liveChecksResult){
+  var panel=document.getElementById('v12ContextContent');if(!panel||!chapterId)return;
+  var ta=document.getElementById('v12Textarea');
+  if(chapterContent==null)chapterContent=ta?ta.value:'';
+  var live=liveChecksResult||v12LastLiveChecks||{markers:[],counts:{},total:0};
+  v12LastLiveChecks=live;
+  var charsR,placesR,themesR,notesR,findingsR,tlaR;
+  try{var all=await Promise.all([call('list_characters'),call('list_places'),call('list_themes'),call('list_notes','chapter',chapterId),call('list_findings','open'),call('get_things_to_look_at',5)]);charsR=all[0];placesR=all[1];themesR=all[2];notesR=all[3];findingsR=all[4];tlaR=all[5]}catch(e){panel.innerHTML=v12RenderLiveChecksHTML(live)+'<h4>🔗 Context</h4><p class="muted" style="font-size:13px">Could not load context.</p>';return}
+  var chars=(charsR&&charsR.ok&&charsR.characters)||[];var places=(placesR&&placesR.ok&&placesR.places)||[];var themes=(themesR&&themesR.ok&&themesR.themes)||[];var notes=(notesR&&notesR.ok&&notesR.notes)||[];var allFindings=(findingsR&&findingsR.ok&&findingsR.findings)||[];var tla=(tlaR&&tlaR.ok&&tlaR.findings)||[];
+  var findings=allFindings.filter(function(f){return f.source_chapter===chapterId}).slice(0,20);
+  var paraLower=v12CurrentParagraph(chapterContent,ta?ta.selectionStart||0:0).toLowerCase();
+  var byApp=function(a,b){return (b.appearance_count||0)-(a.appearance_count||0)};
+  var matchedChars=chars.filter(function(c){if(v12NameInText(c.name,paraLower))return true;return (c.aliases||[]).some(function(a){return v12NameInText(a,paraLower)})}).sort(byApp);
+  var matchedPlaces=places.filter(function(p){return v12NameInText(p.name,paraLower)}).sort(byApp);
+  var matchedThemes=themes.filter(function(t){return v12NameInText(t.name,paraLower)}).sort(byApp);
+  v12ContextDetailCache={};
+  var html=v12RenderLiveChecksHTML(live);
+  html+='<h4>🔗 In this passage</h4>';
+  var hasPassage=matchedChars.length||matchedPlaces.length||matchedThemes.length;
+  if(matchedChars.length){html+='<div class="v12-context-group-label">👤 Characters</div>';matchedChars.forEach(function(c){var aliasTag=c.aliases&&c.aliases.length?' <span class="muted" style="font-size:11px">+'+c.aliases.length+'</span>':'';html+='<div class="v12-context-item" onclick="v12OpenCharacter('+c.id+')" title="'+esc(c.role||'')+'">'+esc(c.name)+aliasTag+'</div>'})}
+  if(matchedPlaces.length){html+='<div class="v12-context-group-label">📍 Places</div>';matchedPlaces.forEach(function(p){html+='<div class="v12-context-item" onclick="v12OpenPlace('+p.id+')" title="'+esc(p.type||'')+'">'+esc(p.name)+'</div>'})}
+  if(matchedThemes.length){html+='<div class="v12-context-group-label">🎭 Themes</div>';matchedThemes.forEach(function(t){html+='<div class="v12-context-item" onclick="v12OpenTheme('+t.id+')" title="'+esc(t.category||'')+'">'+esc(t.name)+'</div>'})}
+  if(!hasPassage){html+='<p class="muted v12-context-empty" style="font-size:13px;padding:4px 0">No characters, places, or themes in this paragraph.</p>'}
+  html+='<h4>📎 This chapter</h4>';
+  var hasChapter=notes.length||findings.length;
+  if(notes.length){html+='<div class="v12-context-group-label">📝 Notes ('+notes.length+')</div>';notes.slice(0,8).forEach(function(n){v12ContextDetailCache['note-'+n.id]=n;var prev=(n.content||'').substring(0,60);html+='<div class="v12-context-item v12-context-expandable" onclick="v12ToggleContextDetail(\'note-'+n.id+'\')" title="Click to expand">'+esc(prev)+(n.content&&n.content.length>60?'…':'')+'</div>';html+='<div class="v12-context-detail" id="detail-note-'+n.id+'" style="display:none"><div class="v12-context-detail-body">'+esc(n.content||'')+'</div></div>'})}
+  if(findings.length){html+='<div class="v12-context-group-label">🔬 Open findings ('+findings.length+')</div>';findings.slice(0,8).forEach(function(f){v12ContextDetailCache['finding-'+f.id]=f;var paraTag=f.source_paragraph!=null?' <span class="muted" style="font-size:11px">¶'+f.source_paragraph+'</span>':'';html+='<div class="v12-context-item v12-context-expandable" onclick="v12ToggleContextDetail(\'finding-'+f.id+'\')" title="Click to expand">'+esc(f.category||f.tool||'Finding')+paraTag+'</div>';html+='<div class="v12-context-detail" id="detail-finding-'+f.id+'" style="display:none"><div class="v12-context-detail-body"><strong>'+esc(f.observation||'')+'</strong>'+(f.why_it_matters?'<br><span class="muted">Why: </span>'+esc(f.why_it_matters):'')+(f.suggested_improvement?'<br><span class="muted">Try: </span>'+esc(f.suggested_improvement):'')+'</div></div>'})}
+  if(!hasChapter){html+='<p class="muted v12-context-empty" style="font-size:13px;padding:4px 0">No notes or findings for this chapter yet.</p>'}
+  if(tla.length){var more=tla.length>=5?'+':'';html+='<div class="v12-context-tla" onclick="navigate(\'findings\')" title="Open Findings view"><span>👀 Things worth looking at</span><span class="v12-context-badge">'+tla.length+more+'</span></div>'}
+  if(!hasPassage&&!hasChapter&&!tla.length&&!live.total){html='<h4>🔗 Context</h4><p class="muted v12-context-empty" style="font-size:13px;padding:4px 0">Nothing connected yet.</p>'}
+  panel.innerHTML=html;
+}
 function v12JumpToMarker(start,end){var ta=document.getElementById('v12Textarea');ta.focus();ta.setSelectionRange(start,end);var lineHeight=30;var line=ta.value.substring(0,start).split('\n').length;ta.scrollTop=(line-3)*lineHeight}
+/* === V12.1: ANALYSE CHAPTER FROM EDITOR === */
+async function v12AnalyseChapter(){
+  if(!v12CurrentChapter)return showToast('Open a chapter first');
+  /* Save first */
+  await v12Autosave();
+  /* Get the chapter content */
+  try{
+    var r=await call('get_chapter_content',v12CurrentChapter);
+    if(!r||!r.ok)return showToast('Could not load chapter');
+    var content=r.content||'';
+    if(!content.trim())return showToast('Chapter is empty — write something first');
+    /* Run recommended analysis tools */
+    var tools=['craft','voice','characters','continuity','themes','editor','repetition','pacing','cadence','memory_truth','emotional_beats'];
+    startTimer('Analysing chapter with '+tools.length+' tools');
+    /* Use the legacy analyze API with the chapter content as a temp file path */
+    /* We need to create a temp file for the legacy analysis to work */
+    var ar=await call('analyze',[r.item.path||v12CurrentChapter],tools);
+    stopTimer();
+    if(ar&&ar.ok){
+      /* Show results in the context panel */
+      var fr=ar.results[0]||{};
+      var syn=fr.results&&fr.results._synthesis;
+      var panel=document.getElementById('v12ContextPanel');
+      if(!panel.classList.contains('visible')){panel.classList.add('visible');document.getElementById('v12ContextBtn').style.background='var(--ms-soft)'}
+      var html='';
+      if(syn){
+        html+='<h4>✦ Synthesis</h4>';
+        if(syn.voice_consistency)html+='<div class="v12-context-detail-body" style="margin-bottom:6px"><strong>Voice:</strong> '+esc(syn.voice_consistency.substring(0,120))+'</div>';
+        if(syn.narrator_distance)html+='<div class="v12-context-detail-body" style="margin-bottom:6px"><strong>Distance:</strong> '+esc(syn.narrator_distance.substring(0,120))+'</div>';
+        if(syn.top_things_to_notice&&syn.top_things_to_notice.length){
+          html+='<div class="v12-context-group-label">👀 Top things to notice</div>';
+          syn.top_things_to_notice.slice(0,5).forEach(function(t,i){html+='<div class="v12-context-item" style="font-size:13px">'+(i+1)+'. '+esc(t.substring(0,100))+'</div>'});
+        }
+      }
+      /* Count findings */
+      var findingCount=0;
+      Object.entries(fr.results||{}).forEach(function(e){if(e[0]==='_synthesis')return;if(e[1]&&e[1].observations)findingCount+=e[1].observations.length});
+      html+='<h4>🔬 Analysis complete</h4>';
+      html+='<div class="v12-context-item" style="font-size:13px">'+findingCount+' observations across '+tools.length+' tools</div>';
+      html+='<div class="v12-context-item" onclick="navigate(\'findings\')" style="font-size:13px;color:var(--ms-accent)">→ View in Findings</div>';
+      html+='<div class="v12-context-item" onclick="navigate(\'manuscript\')" style="font-size:13px;color:var(--ms-accent)">→ View full results</div>';
+      document.getElementById('v12ContextContent').innerHTML=html;
+      showToast('Analysis complete: '+findingCount+' observations');
+    }else{
+      showToast(ar&&ar.error||'Analysis failed');
+    }
+  }catch(e){
+    showToast('Analysis error: '+e.message);
+  }
+}
+/* === V12.1: PROMOTE BRAIN DUMP TO MANUSCRIPT === */
+async function v12PromoteToManuscript(path){
+  if(!path)return showToast('No file path');
+  if(!confirm('Promote this brain dump to the manuscript? The original will be preserved.'))return;
+  try{
+    /* Read the file, create a chapter from it */
+    var body=await call('get_file_body',path);
+    if(!body||!body.ok)return showToast('Could not read file');
+    var title=Path_basename(path).replace(/\.[^.]+$/,'');
+    var ch=await call('create_chapter',title);
+    if(!ch||!ch.ok)return showToast('Could not create chapter');
+    await call('save_chapter_content',ch.item.id,body.content||'');
+    showToast('Promoted to manuscript: '+title);
+    await v12LoadManuscriptTree();
+    await v12OpenChapter(ch.item.id);
+  }catch(e){
+    showToast('Promotion failed: '+e.message);
+  }
+}
 function updateNavCounts(){var i=DATA.files.filter(function(f){return['raw-dumps','triage'].includes(f.folder)}).length;var m=DATA.files.filter(function(f){return['chapters','drafts','final'].includes(f.folder)}).length;document.getElementById('inboxCount').textContent=i||'';document.getElementById('msCount').textContent=m||''}
 function navigate(v){currentView=v;document.querySelectorAll('.nav-item').forEach(function(b){b.classList.toggle('active',b.dataset.view===v)});var c=document.getElementById('content');c.className='content';if(v==='inbox'||v==='browsetags'||v==='map')c.classList.add('zone-inbox');if(v==='manuscript'||v==='reader'||v==='findings'||v==='characters'||v==='places'||v==='themes'||v==='arcs'||v==='relationships'||v==='timeline'||v==='compare')c.classList.add('zone-manuscript');if(v==='home')renderHome();if(v==='inbox')renderInbox();if(v==='browsetags')renderBrowseTags();if(v==='manuscript')renderManuscript();if(v==='search')renderSearch();if(v==='reader')renderReader();if(v==='characters')renderCharacters();if(v==='places')renderPlaces();if(v==='themes')renderThemes();if(v==='arcs')renderArcs();if(v==='relationships')renderRelationships();if(v==='timeline')renderTimeline();if(v==='findings')renderFindings();if(v==='map')renderMapView();if(v==='compare')renderCompareView();if(v==='exports')renderExports();if(v==='settings')renderSettings()}
 function setStatus(t){document.getElementById('statusText').textContent=t}
@@ -449,7 +566,7 @@ async function browseTagSearch(tagType,value){
     el.innerHTML=html;
   }catch(e){el.innerHTML='<div class="card"><p class="muted">Error: '+esc(e.message)+'</p></div>'}
 }
-function renderFileList(files,scope){if(!files.length)return'<div class="empty">Nothing here yet.</div>';return files.map(function(f){var safePath=encodeURIComponent(f.path||'');var historyBtn=(scope==='analysis')?'<button class="btn-ghost btn-sm" data-history="'+safePath+'" style="font-size:11px;padding:4px 10px">📚 History</button>':'';return'<div class="filerow"><input type="checkbox" data-s="'+scope+'" value="'+esc(f.path)+'"><div class="file-info"><div class="file-name">'+esc(f.filename)+'</div><div class="file-meta">'+(f.word_count||0)+' words \u00b7 '+esc(f.status)+(f.last_analyzed?' \u00b7 analysed':'')+'</div></div><span class="file-folder">'+esc(f.folder)+'</span>'+historyBtn+'<button class="btn-delete" data-del="'+safePath+'">Delete</button></div>'}).join('')}
+function renderFileList(files,scope){if(!files.length)return'<div class="empty">Nothing here yet.</div>';return files.map(function(f){var safePath=encodeURIComponent(f.path||'');var historyBtn=(scope==='analysis')?'<button class="btn-ghost btn-sm" data-history="'+safePath+'" style="font-size:11px;padding:4px 10px">📚 History</button>':'';var promoteBtn=(scope==='inbox')?'<button class="btn-ghost btn-sm" data-promote="'+safePath+'" style="font-size:11px;padding:4px 10px;color:var(--ms-accent)">⬆ Promote</button>':'';return'<div class="filerow"><input type="checkbox" data-s="'+scope+'" value="'+esc(f.path)+'"><div class="file-info"><div class="file-name">'+esc(f.filename)+'</div><div class="file-meta">'+(f.word_count||0)+' words \u00b7 '+esc(f.status)+(f.last_analyzed?' \u00b7 analysed':'')+'</div></div><span class="file-folder">'+esc(f.folder)+'</span>'+promoteBtn+historyBtn+'<button class="btn-delete" data-del="'+safePath+'">Delete</button></div>'}).join('')}
 function selected(scope){return[].slice.call(document.querySelectorAll('input[data-s="'+scope+'"]:checked')).map(function(x){return x.value})}
 function renderInbox(){var files=DATA.files.filter(function(f){return['raw-dumps','triage'].includes(f.folder)});document.getElementById('content').innerHTML='<div class="view active zone-inbox"><div class="view-header"><h1>Scribble Inbox</h1><p class="lead">Brain dumps, fragments, notes. Tag them so you can find anything later via Browse Tags or Search.</p></div><div class="dropzone" onclick="importFiles(\'raw-dumps\')"><div class="dropzone-icon">📂</div><div class="dropzone-text">Drop .txt or .md files here</div><div class="dropzone-hint">or click to browse — or write a Quick Note (top-right)</div></div><div class="card"><h3>Your brain dumps</h3><div class="filelist" id="inboxList">'+renderFileList(files,'inbox')+'</div></div><div class="actions"><button class="btn-secondary" onclick="previewTags()">🔍 Detect tags (preview)</button><button class="btn-primary" onclick="applyTags()">💾 Tag &amp; save to DB</button><button class="btn-secondary" onclick="navigate(\'browsetags\')">🏷 Browse all tags →</button></div><div class="card" id="tagResults" style="display:none"><h3>Tagging results</h3><div id="tagResultsContent"></div></div></div>';var dz=document.querySelector('.dropzone');dz.ondragover=function(e){e.preventDefault();dz.classList.add('dragover')};dz.ondragleave=function(){dz.classList.remove('dragover')};dz.ondrop=async function(e){e.preventDefault();dz.classList.remove('dragover');var paths=[].slice.call(e.dataTransfer.files).map(function(f){return f.path});if(paths.length)await doImport('raw-dumps',paths)}}
 async function importFiles(dest){try{var r=await call('pick_open_files');if(r&&r.paths&&r.paths.length)await doImport(dest,r.paths);else if(r&&r.error)showToast(r.error)}catch(e){showToast('Could not open file dialog: '+e.message)}}
@@ -555,7 +672,7 @@ async function loadSettings(){try{var s=await call('get_ai_status');document.get
 function openQuickNote(){document.getElementById('noteOverlay').style.display='flex';document.getElementById('noteBody').focus()}
 function closeQuickNote(){document.getElementById('noteOverlay').style.display='none';document.getElementById('noteTitle').value='';document.getElementById('noteBody').value=''}
 async function saveNote(){var t=document.getElementById('noteTitle').value.trim();var tx=document.getElementById('noteBody').value.trim();if(!tx)return showToast('Write something first');var r=await call('save_note',t,tx);if(r.ok){closeQuickNote();showToast('Saved to Inbox');await load()}else showToast(r.error)}
-document.addEventListener('click',function(e){var btn=e.target.closest('[data-del]');if(btn){var path=decodeURIComponent(btn.getAttribute('data-del'));deleteFile(path)}var histBtn=e.target.closest('[data-history]');if(histBtn){var p=decodeURIComponent(histBtn.getAttribute('data-history'));showAnalysisHistory(p)}});
+document.addEventListener('click',function(e){var btn=e.target.closest('[data-del]');if(btn){var path=decodeURIComponent(btn.getAttribute('data-del'));deleteFile(path)}var histBtn=e.target.closest('[data-history]');if(histBtn){var p=decodeURIComponent(histBtn.getAttribute('data-history'));showAnalysisHistory(p)}var promoteBtn=e.target.closest('[data-promote]');if(promoteBtn){var pp=decodeURIComponent(promoteBtn.getAttribute('data-promote'));v12PromoteToManuscript(pp)}});
 async function deleteFile(path){if(!window.confirm('Move this file to archive? You can recover it later.'))return;var r=await call('delete_file',path);if(r.ok){showToast(r.message);await load();navigate(currentView)}else showToast(r.error)}
 async function showAnalysisHistory(path){
   try{

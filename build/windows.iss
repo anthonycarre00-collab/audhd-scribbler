@@ -2,7 +2,7 @@
 ; Build with: iscc build\windows.iss
 
 #define MyAppName "Audhd Scribbler"
-#define MyAppVersion "12.0"
+#define MyAppVersion "12.1"
 #define MyAppPublisher "Audhd Scribbler"
 #define MyAppExeName "AudhdScribbler.exe"
 

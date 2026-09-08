@@ -71,7 +71,7 @@ class Api:
         stats = db.get_stats()
         return {
             "ok": True,
-            "version": "10.0",
+            "version": "12.1",
             "llm": llm.llm_status(),
             "llm_available": bool(llm.llm_available()),
             "total_files": stats.get("total_files", 0),
