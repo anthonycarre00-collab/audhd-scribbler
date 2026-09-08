@@ -1088,6 +1088,144 @@ class Api:
         except Exception as e:
             return {"ok": False, "error": str(e)}
 
+    # ── V12: ARCS / RELATIONSHIPS / SCENES / TIMELINE / NOTES / FINDINGS / SEARCH ──
+
+    def list_arcs(self) -> dict:
+        try:
+            from .profiles import arcs
+            return {"ok": True, "arcs": _js_safe(arcs.list_arcs())}
+        except Exception as e: return {"ok": False, "error": str(e)}
+
+    def get_arc(self, arc_id: int) -> dict:
+        try:
+            from .profiles import arcs
+            a = arcs.get_arc(arc_id)
+            return {"ok": True, "arc": _js_safe(a)} if a else {"ok": False, "error": "Not found"}
+        except Exception as e: return {"ok": False, "error": str(e)}
+
+    def create_arc(self, data: dict) -> dict:
+        try:
+            from .profiles import arcs
+            r = arcs.create_arc(data)
+            return {"ok": True, "arc": _js_safe(r)} if "error" not in r else {"ok": False, "error": r["error"]}
+        except Exception as e: return {"ok": False, "error": str(e)}
+
+    def update_arc(self, arc_id: int, data: dict) -> dict:
+        try:
+            from .profiles import arcs
+            a = arcs.update_arc(arc_id, data)
+            return {"ok": True, "arc": _js_safe(a)} if a else {"ok": False, "error": "Not found"}
+        except Exception as e: return {"ok": False, "error": str(e)}
+
+    def delete_arc(self, arc_id: int) -> dict:
+        try:
+            from .profiles import arcs
+            arcs.delete_arc(arc_id); return {"ok": True}
+        except Exception as e: return {"ok": False, "error": str(e)}
+
+    def list_relationships(self) -> dict:
+        try:
+            from .profiles import arcs
+            return {"ok": True, "relationships": _js_safe(arcs.list_relationships())}
+        except Exception as e: return {"ok": False, "error": str(e)}
+
+    def create_relationship(self, data: dict) -> dict:
+        try:
+            from .profiles import arcs
+            r = arcs.create_relationship(data)
+            return {"ok": True, "relationship": _js_safe(r)} if "error" not in r else {"ok": False, "error": r["error"]}
+        except Exception as e: return {"ok": False, "error": str(e)}
+
+    def update_relationship(self, rel_id: int, data: dict) -> dict:
+        try:
+            from .profiles import arcs
+            r = arcs.update_relationship(rel_id, data)
+            return {"ok": True, "relationship": _js_safe(r)} if r else {"ok": False, "error": "Not found"}
+        except Exception as e: return {"ok": False, "error": str(e)}
+
+    def delete_relationship(self, rel_id: int) -> dict:
+        try:
+            from .profiles import arcs
+            arcs.delete_relationship(rel_id); return {"ok": True}
+        except Exception as e: return {"ok": False, "error": str(e)}
+
+    def list_scenes(self, chapter_id: int) -> dict:
+        try:
+            from .profiles import arcs
+            return {"ok": True, "scenes": _js_safe(arcs.list_scenes(chapter_id))}
+        except Exception as e: return {"ok": False, "error": str(e)}
+
+    def create_scene(self, data: dict) -> dict:
+        try:
+            from .profiles import arcs
+            r = arcs.create_scene(data)
+            return {"ok": True, "scene": _js_safe(r)} if "error" not in r else {"ok": False, "error": r["error"]}
+        except Exception as e: return {"ok": False, "error": str(e)}
+
+    def delete_scene(self, scene_id: int) -> dict:
+        try:
+            from .profiles import arcs
+            arcs.delete_scene(scene_id); return {"ok": True}
+        except Exception as e: return {"ok": False, "error": str(e)}
+
+    def get_timeline(self) -> dict:
+        try:
+            from .profiles import arcs
+            return {"ok": True, "timeline": _js_safe(arcs.get_timeline())}
+        except Exception as e: return {"ok": False, "error": str(e)}
+
+    def list_notes(self, target_type: str = None, target_id: int = None) -> dict:
+        try:
+            from .profiles import arcs
+            return {"ok": True, "notes": _js_safe(arcs.list_notes(target_type, target_id))}
+        except Exception as e: return {"ok": False, "error": str(e)}
+
+    def create_note(self, data: dict) -> dict:
+        try:
+            from .profiles import arcs
+            r = arcs.create_note(data)
+            return {"ok": True, "note": _js_safe(r)} if "error" not in r else {"ok": False, "error": r["error"]}
+        except Exception as e: return {"ok": False, "error": str(e)}
+
+    def delete_note(self, note_id: int) -> dict:
+        try:
+            from .profiles import arcs
+            arcs.delete_note(note_id); return {"ok": True}
+        except Exception as e: return {"ok": False, "error": str(e)}
+
+    def list_findings(self, status: str = None, source_type: str = None, source_id: int = None) -> dict:
+        try:
+            from .profiles import arcs
+            return {"ok": True, "findings": _js_safe(arcs.list_findings(status, source_type, source_id))}
+        except Exception as e: return {"ok": False, "error": str(e)}
+
+    def get_things_to_look_at(self, limit: int = 10) -> dict:
+        try:
+            from .profiles import arcs
+            return {"ok": True, "findings": _js_safe(arcs.get_things_to_look_at(limit))}
+        except Exception as e: return {"ok": False, "error": str(e)}
+
+    def update_finding_status(self, finding_id: int, status: str) -> dict:
+        try:
+            from .profiles import arcs
+            f = arcs.update_finding_status(finding_id, status)
+            return {"ok": True, "finding": _js_safe(f)} if f else {"ok": False, "error": "Not found"}
+        except Exception as e: return {"ok": False, "error": str(e)}
+
+    def create_finding(self, data: dict) -> dict:
+        try:
+            from .profiles import arcs
+            r = arcs.create_finding(data)
+            return {"ok": True, "finding": _js_safe(r)} if "error" not in r else {"ok": False, "error": r["error"]}
+        except Exception as e: return {"ok": False, "error": str(e)}
+
+    def unified_search(self, query: str) -> dict:
+        try:
+            from .profiles import arcs
+            r = arcs.unified_search(query)
+            return {"ok": True, "result": _js_safe(r)}
+        except Exception as e: return {"ok": False, "error": str(e)}
+
     # ── INTERNAL ────────────────────────────────────────────────────
 
     def _push_progress(self, step: int, total: int, message: str):
