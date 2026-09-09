@@ -91,6 +91,19 @@ STOPLIST_CHARACTERS = {
     "my", "i", "we", "he", "she", "they", "it", "us", "our", "his", "her", "their",
     # Generic words capitalized at sentence start
     "the", "and", "but", "when", "after", "before", "during", "while", "then",
+    # Common nouns/adjectives/verbs/vocatives that spaCy mis-tags as PERSON
+    "bastard", "bitch", "damn", "hell", "god", "gods", "lord", "lady",
+    "sir", "madam", "madame", "mister", "miss", "mrs", "mr", "ms", "dr", "prof",
+    "saint", "baby", "babe", "darling", "sweetheart", "honey", "dear", "love",
+    "kid", "kids", "boy", "girl", "man", "woman", "guy", "guys", "folks", "people",
+    "someone", "everyone", "nobody", "anybody", "somebody",
+    "narrator", "author", "character", "protagonist", "antagonist",
+    "stranger", "visitor", "guest", "neighbor", "neighbour", "friend", "enemy",
+    # Common verbs that get capitalized at sentence start
+    "said", "went", "came", "looked", "knew", "thought", "felt", "saw", "heard",
+    "was", "were", "had", "did", "have", "has", "does",
+    # Common adjectives
+    "old", "young", "little", "big", "great", "good", "bad",
 }
 # Phase 12: Themes that look place-y but aren't
 THEME_AS_PLACE_STOP = {

@@ -69,8 +69,17 @@ def detect_characters(text: str, nlp=None) -> List[str]:
     from .config import STOPLIST_CHARACTERS
     characters = set()
     if nlp is None: nlp = _get_spacy()
+    # Split into sentences so we can pass context to _classify_entity
+    sentences = split_sentences(text)
     if nlp:
-        characters = _spacy_ner_chunked(text, nlp, {"PERSON"})
+        # Cap at 200 sentences for performance
+        for sent in sentences[:200]:
+            ents = _spacy_ner_chunked(sent, nlp, {"PERSON"})
+            for ent in ents:
+                if len(ent.strip()) <= 1: continue
+                # Classify using the sentence as context
+                if _classify_entity(ent, sent) == "person":
+                    characters.add(ent.strip())
     else:
         words = re.findall(r'\b([A-Z][a-z]+(?:\s+[A-Z][a-z]+)*)\b', text)
         from collections import Counter
@@ -81,25 +90,16 @@ def detect_characters(text: str, nlp=None) -> List[str]:
     family_patterns = [r'\b(Mom|Mum|Mother|Dad|Father|Grandma|Grandpa|Grandmother|Grandfather|Nana|Papa|Sister|Brother|Aunt|Uncle|Cousin)\b']
     for pattern in family_patterns:
         characters.update(re.findall(pattern, text))
-    # Phase 12: filter out stoplisted tokens that spaCy mis-tags as PERSON
+    # Filter out stoplisted tokens
     filtered = set()
     for c in characters:
         cl = c.lower()
-        # Skip if the entire token is in the stoplist
         if cl in STOPLIST_CHARACTERS:
             continue
-        # Skip single-word entities that are common nouns
-        if " " not in c and cl in STOPLIST_CHARACTERS:
-            continue
-        # Skip if it looks like a sentence-start capitalization of a common word
         if cl in {"the","and","but","when","after","before","during","while","then","because","although","however"}:
             continue
-        # Apply classification — only keep if it plausibly looks like a person
-        if _classify_entity(c, "") == "person":
-            filtered.add(c)
-        else:
-            # If classification is uncertain, keep it (better to over-tag than miss)
-            filtered.add(c)
+        # Keep — either family role (always person) or passed _classify_entity with context
+        filtered.add(c)
     return sorted(filtered)[:20]
 
 
@@ -135,8 +135,8 @@ def _classify_entity(name: str, context_sentence: str = "") -> str:
             # But "to Mom" is a person — only treat as place if not a family role
             if nl not in {"mom", "mum", "mother", "dad", "father", "grandma", "grandpa"}:
                 return "place"
-    # Default: assume person (spaCy tagged it as PERSON)
-    return "person"
+    # Default: no positive evidence — reject (was "person", now "other" per V12.2)
+    return "other"
 
 
 def detect_time_markers(text: str) -> List[str]:

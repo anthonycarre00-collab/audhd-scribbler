@@ -930,10 +930,27 @@ class Api:
             content = manuscript_tree.get_chapter_content(chapter_id)
             if content is None:
                 return {"ok": False, "error": "Chapter not found"}
-            from .editor.live_checks import run_live_checks as _run
+            # 100k-char guard — refuse to run grammar checks on huge documents
+            if len(content) > 100000:
+                from .editor.live_checks import run_live_checks as _run
+                result = _run(content, cursor_offset)
+                result["warning"] = "Document very large — manual check only"
+                return {"ok": True, "result": _js_safe(result)}
+            from .editor.live_checks import run_live_checks as _run, split_paragraphs
             from .editor.grammar_checks import run_grammar_checks as _run_grammar
             result = _run(content, cursor_offset)
-            grammar = _run_grammar(content)
+            # Scope grammar checks to the same ±2 paragraphs as live checks
+            paras = split_paragraphs(content)
+            if cursor_offset > 0 and paras:
+                current = next((p for p in paras if p["start"] <= cursor_offset < p["end"]), paras[0] if paras else None)
+                if current:
+                    idx = paras.index(current)
+                    scope = [p["text"] for p in paras[max(0, idx-2):idx+3]]
+                    grammar = _run_grammar("\n\n".join(scope))
+                else:
+                    grammar = _run_grammar(content)
+            else:
+                grammar = _run_grammar(content)
             result["markers"].extend(grammar["markers"])
             for k, v in grammar["counts"].items():
                 result["counts"][k] = result["counts"].get(k, 0) + v
